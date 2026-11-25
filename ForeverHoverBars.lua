@@ -1,4 +1,11 @@
-local addonName = ...
+local addonName, addon = ...
+local L = addon.L
+local addonTitle = "HUD Tuner"
+
+local function Notify(message)
+    print(addonTitle .. ": " .. message)
+end
+
 local controller = CreateFrame("Frame")
 local bars, panel = {}
 local RefreshGroupUI
@@ -9,10 +16,11 @@ local names = {
     "MultiBarRight", "MultiBarLeft", "MultiBar5", "MultiBar6", "MultiBar7",
     "PetActionBar", "StanceBar", "BagsBar", "MicroMenu",
 }
-local labels = {
-    "Barra 1", "Barra 2", "Barra 3", "Barra 4", "Barra 5",
-    "Barra 6", "Barra 7", "Barra 8", "Mascota", "Posturas", "Mochilas", "Micromenu",
-}
+local labels = {}
+for index = 1, 8 do
+    labels[index] = L.ActionBar:format(index)
+end
+labels[9], labels[10], labels[11], labels[12] = L.PetBar, L.StanceBar, L.BagsBar, L.MicroMenu
 local db
 local playerPortrait
 local targetPortrait
@@ -97,7 +105,7 @@ local function UpdateLevelBadgePositions()
 end
 local function ToggleLevelMover()
     if InCombatLockdown() then
-        print("ForeverHoverBars: mueve el texto fuera de combate.")
+        Notify(L.MoveLevelOutOfCombat)
         return
     end
     if levelMover and levelMover:IsShown() then
@@ -117,13 +125,13 @@ local function ToggleLevelMover()
         end
         levelMover:Hide()
         UpdateLevelBadgePositions()
-        print("ForeverHoverBars: posicion del nivel guardada.")
+        Notify(L.LevelPositionSaved)
         return
     end
     local icon = playerPortrait and playerPortrait:IsShown() and playerPortrait
         or targetPortrait and targetPortrait:IsShown() and targetPortrait
     if not icon or not icon.levelBadge then
-        print("ForeverHoverBars: activa el icono del jugador o del objetivo primero.")
+        Notify(L.EnableAnIconFirst)
         return
     end
     if not levelMover then
@@ -138,7 +146,7 @@ local function ToggleLevelMover()
         bg:SetColorTexture(0.55, 0.42, 0.23, 0.62)
         local label = levelMover:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         label:SetPoint("CENTER")
-        label:SetText("Nivel: arrastra")
+        label:SetText(L.LevelDrag)
         levelMover:SetScript("OnDragStart", function(self)
             if not InCombatLockdown() then
                 self:StartMoving()
@@ -172,7 +180,7 @@ local function ToggleLevelMover()
     levelMover:SetSize(58, 22)
     levelMover:SetPoint("CENTER", icon.levelBadge, "CENTER")
     levelMover:Show()
-    print("ForeverHoverBars: arrastra el texto azul; clic derecho para guardar.")
+    Notify(L.MoveAndSaveLevel)
 end
 local function PositionPlayerPortrait(x, y)
     if not playerPortrait then return end
@@ -204,11 +212,11 @@ local function SavePlayerMoverPosition()
     PositionPlayerPortrait(db.playerPortraitX, db.playerPortraitY)
     playerMover:Hide()
     if playerMover.controls then playerMover.controls:Hide() end
-    print("ForeverHoverBars: posicion del icono del jugador guardada.")
+    Notify(L.PlayerIconPositionSaved)
 end
 local function TogglePlayerMover()
     if InCombatLockdown() then
-        print("ForeverHoverBars: mueve el icono fuera de combate.")
+        Notify(L.MovePlayerOutOfCombat)
         return
     end
     db.hidePlayerFrame = true
@@ -229,7 +237,7 @@ local function TogglePlayerMover()
         bg:SetColorTexture(0.55, 0.42, 0.23, 0.55)
         local label = playerMover:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         label:SetPoint("CENTER")
-        label:SetText("ARRASTRA PARA MOVER")
+        label:SetText(L.DragToMove)
         playerMover:SetScript("OnDragStart", function(self)
             if not InCombatLockdown() then
                 self:StartMoving()
@@ -271,19 +279,19 @@ local function TogglePlayerMover()
         controls:EnableMouse(true)
         local title = controls:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("TOP", 0, -12)
-        title:SetText("Colocar icono del jugador")
+        title:SetText(L.MovePlayerIcon)
         local hint = controls:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         hint:SetPoint("TOP", title, "BOTTOM", 0, -4)
-        hint:SetText("Arrastra el icono o usa las flechas")
+        hint:SetText(L.DragOrArrows)
 
         local step = 1
         local stepButton = CreateFrame("Button", nil, controls, "UIPanelButtonTemplate")
         stepButton:SetSize(58, 24)
         stepButton:SetPoint("BOTTOMLEFT", 12, 12)
-        stepButton:SetText("Paso: 1")
+        stepButton:SetText(L.Step:format(1))
         stepButton:SetScript("OnClick", function(self)
             step = step == 1 and 5 or (step == 5 and 15 or 1)
-            self:SetText("Paso: " .. step)
+            self:SetText(L.Step:format(step))
         end)
         local function Nudge(dx, dy)
             local x, y = playerMover:GetCenter()
@@ -308,7 +316,7 @@ local function TogglePlayerMover()
         local centerButton = CreateFrame("Button", nil, controls, "UIPanelButtonTemplate")
         centerButton:SetSize(58, 24)
         centerButton:SetPoint("BOTTOMLEFT", stepButton, "BOTTOMRIGHT", 6, 0)
-        centerButton:SetText("Centro")
+        centerButton:SetText(L.Center)
         centerButton:SetScript("OnClick", function()
             db.playerPortraitX, db.playerPortraitY = nil, nil
             PositionPlayerPortrait()
@@ -322,7 +330,7 @@ local function TogglePlayerMover()
         local saveButton = CreateFrame("Button", nil, controls, "UIPanelButtonTemplate")
         saveButton:SetSize(74, 24)
         saveButton:SetPoint("BOTTOMRIGHT", -12, 12)
-        saveButton:SetText("Guardar")
+        saveButton:SetText(L.Save)
         saveButton:SetScript("OnClick", SavePlayerMoverPosition)
         playerMover.controls = controls
     end
@@ -337,7 +345,7 @@ local function TogglePlayerMover()
     end
     playerMover:Show()
     playerMover.controls:Show()
-    print("ForeverHoverBars: arrastra el icono o usa las flechas; pulsa Guardar al terminar.")
+    Notify(L.MoveAndSavePlayer)
 end
 ApplyPlayerPortrait = function()
     if not PlayerFrame then return end
@@ -465,9 +473,9 @@ local function CreateMinimapButton()
         self.icon:SetVertexColor(1, 0.88, 0.62, 1)
         self.border:SetAlpha(1)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("ForeverHUD")
-        GameTooltip:AddLine("Clic para abrir o cerrar la configuración.", 1, 1, 1)
-        GameTooltip:AddLine("Arrastra para cambiar la posición.", 0.7, 0.7, 0.7)
+        GameTooltip:SetText(addonTitle)
+        GameTooltip:AddLine(L.MinimapClick, 1, 1, 1)
+        GameTooltip:AddLine(L.MinimapDrag, 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
     minimapButton:SetScript("OnLeave", function(self)
@@ -518,19 +526,19 @@ local function SaveTargetMoverPosition()
     targetMover:Hide()
     if targetMover.controls then targetMover.controls:Hide() end
     ApplyTargetVisibility()
-    print("ForeverHoverBars: posicion del icono del objetivo guardada.")
+    Notify(L.TargetIconPositionSaved)
 end
 local function ToggleTargetMover()
     if InCombatLockdown() then
-        print("ForeverHoverBars: mueve el icono del objetivo fuera de combate.")
+        Notify(L.MoveTargetOutOfCombat)
         return
     end
     if not TargetFrame then
-        print("ForeverHoverBars: el marco del objetivo aún no está disponible.")
+        Notify(L.TargetFrameUnavailable)
         return
     end
     if EditModeManagerFrame and EditModeManagerFrame:IsShown() then
-        print("ForeverHoverBars: sal de Edit Mode para colocar el icono personalizado.")
+        Notify(L.ExitEditMode)
         return
     end
     db.hideTargetFrame = true
@@ -551,7 +559,7 @@ local function ToggleTargetMover()
         bg:SetColorTexture(0.55, 0.42, 0.23, 0.55)
         local label = targetMover:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         label:SetPoint("CENTER")
-        label:SetText("ARRASTRA PARA MOVER")
+        label:SetText(L.DragToMove)
         targetMover:SetScript("OnDragStart", function(self)
             if not InCombatLockdown() then
                 self:StartMoving()
@@ -593,18 +601,18 @@ local function ToggleTargetMover()
         controls:EnableMouse(true)
         local title = controls:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("TOP", 0, -12)
-        title:SetText("Colocar icono del objetivo")
+        title:SetText(L.MoveTargetIcon)
         local hint = controls:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         hint:SetPoint("TOP", title, "BOTTOM", 0, -4)
-        hint:SetText("Arrastra el icono o usa las flechas")
+        hint:SetText(L.DragOrArrows)
         local step = 1
         local stepButton = CreateFrame("Button", nil, controls, "UIPanelButtonTemplate")
         stepButton:SetSize(58, 24)
         stepButton:SetPoint("BOTTOMLEFT", 12, 12)
-        stepButton:SetText("Paso: 1")
+        stepButton:SetText(L.Step:format(1))
         stepButton:SetScript("OnClick", function(self)
             step = step == 1 and 5 or (step == 5 and 15 or 1)
-            self:SetText("Paso: " .. step)
+            self:SetText(L.Step:format(step))
         end)
         local function Nudge(dx, dy)
             local x, y = targetMover:GetCenter()
@@ -629,7 +637,7 @@ local function ToggleTargetMover()
         local centerButton = CreateFrame("Button", nil, controls, "UIPanelButtonTemplate")
         centerButton:SetSize(58, 24)
         centerButton:SetPoint("BOTTOMLEFT", stepButton, "BOTTOMRIGHT", 6, 0)
-        centerButton:SetText("Centro")
+        centerButton:SetText(L.Center)
         centerButton:SetScript("OnClick", function()
             db.targetPortraitX, db.targetPortraitY = nil, nil
             PositionTargetPortrait()
@@ -643,7 +651,7 @@ local function ToggleTargetMover()
         local saveButton = CreateFrame("Button", nil, controls, "UIPanelButtonTemplate")
         saveButton:SetSize(74, 24)
         saveButton:SetPoint("BOTTOMRIGHT", -12, 12)
-        saveButton:SetText("Guardar")
+        saveButton:SetText(L.Save)
         saveButton:SetScript("OnClick", SaveTargetMoverPosition)
         targetMover.controls = controls
     end
@@ -666,14 +674,10 @@ local function ToggleTargetMover()
     end
     targetMover:Show()
     targetMover.controls:Show()
-    print("ForeverHoverBars: arrastra el icono del objetivo o usa las flechas; pulsa Guardar al terminar.")
+    Notify(L.MoveAndSaveTarget)
 end
 local performance, performanceMoving
-local performanceMetrics = {
-    { key = "showFPS", label = "FPS" },
-    { key = "showHome", label = "Hogar" },
-    { key = "showWorld", label = "Mundo" },
-}
+local performanceMetrics = { "showFPS", "showHome", "showWorld" }
 
 local function PositionPerformance()
     local scale = performance:GetEffectiveScale() / UIParent:GetEffectiveScale()
@@ -705,10 +709,10 @@ local function SamplePerformance()
     end
     if db.showHome or db.showWorld then
         local _, _, home, world = GetNetStats()
-        if db.showHome then parts[#parts + 1] = string.format("Hogar %d ms", home) end
-        if db.showWorld then parts[#parts + 1] = string.format("Mundo %d ms", world) end
+        if db.showHome then parts[#parts + 1] = string.format(L.HomeLatency, home) end
+        if db.showWorld then parts[#parts + 1] = string.format(L.WorldLatency, world) end
     end
-    performance.label:SetText(#parts > 0 and table.concat(parts, "  |  ") or "Arrastra el visor")
+    performance.label:SetText(#parts > 0 and table.concat(parts, "  |  ") or L.DragDisplay)
     performance:SetWidth(math.max(58, performance.label:GetStringWidth() + 14))
 end
 
@@ -726,7 +730,7 @@ local function TogglePerformanceMover()
     performanceMoving = not performanceMoving
     UpdatePerformance()
     if performanceMoving then
-        print("ForeverHoverBars: arrastra el visor. Clic derecho o /fhb rendimiento para bloquear.")
+        Notify(L.MovePerformanceHelp)
     end
 end
 
@@ -808,10 +812,10 @@ local function Hovered(bar)
     return false
 end
 local groupPolicies = {
-    { key = "hover", label = "Hover" },
-    { key = "alwaysVisible", label = "Siempre visible" },
-    { key = "alwaysHidden", label = "Siempre oculto" },
-    { key = "hideInCombat", label = "Ocultar en combate" },
+    { key = "hover", label = L.ShowOnHover },
+    { key = "alwaysVisible", label = L.AlwaysVisible },
+    { key = "alwaysHidden", label = L.AlwaysHidden },
+    { key = "hideInCombat", label = L.HideInCombat },
 }
 local validGroupPolicies = {}
 for _, policy in ipairs(groupPolicies) do validGroupPolicies[policy.key] = true end
@@ -862,7 +866,7 @@ local function GroupPolicyText(policyKey)
     for _, policy in ipairs(groupPolicies) do
         if policy.key == policyKey then return policy.label end
     end
-    return "Hover"
+    return L.ShowOnHover
 end
 local questTrackerHooked
 local questTrackerHidden
@@ -1007,7 +1011,7 @@ CreateOptions = function()
     header:SetHeight(48)
     local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("LEFT")
-    title:SetText("ForeverHUD")
+    title:SetText(addonTitle)
     title:SetTextColor(unpack(colors.accent))
     AddRule(header, "BOTTOMLEFT", "BOTTOMLEFT", 0, 0, width - 32, 1, unpack(colors.border))
 
@@ -1020,7 +1024,7 @@ CreateOptions = function()
     enabled:SetPoint("RIGHT", close, "LEFT", -6, 0)
     local enabledLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     enabledLabel:SetPoint("RIGHT", enabled, "LEFT", -8, 0)
-    enabledLabel:SetText("Visibilidad activa")
+    enabledLabel:SetText(L.VisibilityEnabled)
     enabledLabel:SetTextColor(unpack(colors.muted))
     enabled:SetScript("OnClick", function(self)
         db.enabled = self:GetChecked() and true or false
@@ -1063,10 +1067,10 @@ CreateOptions = function()
     scroll:HookScript("OnShow", UpdateScrollBar)
 
     local pageOrder = {
-        { id = "bars", label = "Barras y grupos" },
-        { id = "frames", label = "Marcos" },
-        { id = "quests", label = "Misiones" },
-        { id = "performance", label = "Rendimiento" },
+        { id = "bars", label = L.BarsAndGroups },
+        { id = "frames", label = L.Frames },
+        { id = "quests", label = L.Quests },
+        { id = "performance", label = L.Performance },
     }
     local pages, navButtons = {}, {}
     for index, item in ipairs(pageOrder) do
@@ -1152,28 +1156,28 @@ CreateOptions = function()
     end
 
     local barPage = pages.bars
-    barPage.contentHeight = AddHeading(barPage, 8, "Barras y grupos",
-        "Elige un grupo para editar su visibilidad y sus barras.")
+    barPage.contentHeight = AddHeading(barPage, 8, L.BarsAndGroups,
+        L.GroupsHelp)
 
     local y
     local framePage = pages.frames
-    y = AddHeading(framePage, 8, "Marcos de unidad",
-        "Personaliza cómo se muestran los iconos del jugador y del objetivo.")
+    y = AddHeading(framePage, 8, L.UnitFrames,
+        L.UnitFramesHelp)
     local hidePlayerCheck
-    y, hidePlayerCheck = AddCheck(framePage, y, "Ocultar marco del jugador y usar icono",
+    y, hidePlayerCheck = AddCheck(framePage, y, L.ReplacePlayerFrame,
         function() return db.hidePlayerFrame end, function(value)
             db.hidePlayerFrame = value
             ApplyPlayerPortrait()
         end)
     panel.hidePlayer = hidePlayerCheck
     local hideTargetCheck
-    y, hideTargetCheck = AddCheck(framePage, y, "Ocultar marco del objetivo y usar icono",
+    y, hideTargetCheck = AddCheck(framePage, y, L.ReplaceTargetFrame,
         function() return db.hideTargetFrame end, function(value)
             db.hideTargetFrame = value
             ApplyTargetVisibility()
         end)
     panel.hideTarget = hideTargetCheck
-    y = AddRowLabel(framePage, y + 8, "Tamaño del icono")
+    y = AddRowLabel(framePage, y + 8, L.IconSize)
     local portraitSizeSlider = CreateFrame("Slider", nil, framePage, "OptionsSliderTemplate")
     portraitSizeSlider:SetPoint("TOPLEFT", 8, -y)
     portraitSizeSlider:SetWidth(math.max(220, math.min(360, content:GetWidth() - 70)))
@@ -1190,7 +1194,7 @@ CreateOptions = function()
     end)
     panel.portraitSize = portraitSizeSlider
     y = y + 64
-    local movePlayerPortrait = AddButton(framePage, "Colocar icono del jugador")
+    local movePlayerPortrait = AddButton(framePage, L.MovePlayerIcon)
     movePlayerPortrait:SetSize(230, 28)
     movePlayerPortrait:SetPoint("TOPLEFT", 8, -y)
     movePlayerPortrait:SetScript("OnClick", function()
@@ -1198,7 +1202,7 @@ CreateOptions = function()
         TogglePlayerMover()
     end)
     y = y + 38
-    local moveTargetPortrait = AddButton(framePage, "Colocar icono del objetivo")
+    local moveTargetPortrait = AddButton(framePage, L.MoveTargetIcon)
     moveTargetPortrait:SetSize(230, 28)
     moveTargetPortrait:SetPoint("TOPLEFT", 8, -y)
     moveTargetPortrait:SetScript("OnClick", function()
@@ -1206,10 +1210,10 @@ CreateOptions = function()
         ToggleTargetMover()
     end)
     y = y + 42
-    y = AddHeading(framePage, y + 8, "Acceso rápido",
-        "El botón del minimapa abre o cierra esta configuración.")
+    y = AddHeading(framePage, y + 8, L.QuickAccess,
+        L.QuickAccessHelp)
     local minimapButtonCheck
-    y, minimapButtonCheck = AddCheck(framePage, y, "Mostrar botón en el minimapa",
+    y, minimapButtonCheck = AddCheck(framePage, y, L.ShowMinimapButton,
         function() return db.showMinimapButton end, function(value)
             db.showMinimapButton = value
             UpdateMinimapButton()
@@ -1218,10 +1222,10 @@ CreateOptions = function()
     framePage.contentHeight = y + 30
 
     local questPage = pages.quests
-    y = AddHeading(questPage, 8, "Misiones",
-        "Controla el rastreador de objetivos de Blizzard en pantalla.")
+    y = AddHeading(questPage, 8, L.Quests,
+        L.QuestsHelp)
     local hideQuestTrackerCheck
-    y, hideQuestTrackerCheck = AddCheck(questPage, y, "Ocultar rastreador de Blizzard",
+    y, hideQuestTrackerCheck = AddCheck(questPage, y, L.HideQuestTracker,
         function() return db.hideBlizzardQuestTracker end, function(value)
             db.hideBlizzardQuestTracker = value
             ApplyQuestTrackerVisibility()
@@ -1229,8 +1233,8 @@ CreateOptions = function()
     questPage.contentHeight = y + 14
 
     local performancePage = pages.performance
-    y = AddHeading(performancePage, 8, "Rendimiento",
-        "Configura la información del visor y su posición en pantalla.")
+    y = AddHeading(performancePage, 8, L.Performance,
+        L.PerformanceHelp)
     local performanceChecks = {}
     local function AddPerformanceCheck(key, label)
         y, performanceChecks[key] = AddCheck(performancePage, y, label,
@@ -1239,11 +1243,11 @@ CreateOptions = function()
                 UpdatePerformance()
             end)
     end
-    AddPerformanceCheck("showPerformance", "Mostrar visor de rendimiento")
-    AddPerformanceCheck("showFPS", "Mostrar FPS")
-    AddPerformanceCheck("showHome", "Mostrar latencia de hogar")
-    AddPerformanceCheck("showWorld", "Mostrar latencia de mundo")
-    y = AddRowLabel(performancePage, y + 8, "Tamaño del visor")
+    AddPerformanceCheck("showPerformance", L.ShowPerformance)
+    AddPerformanceCheck("showFPS", L.ShowFPS)
+    AddPerformanceCheck("showHome", L.ShowHomeLatency)
+    AddPerformanceCheck("showWorld", L.ShowWorldLatency)
+    y = AddRowLabel(performancePage, y + 8, L.DisplaySize)
     local scaleSlider = CreateFrame("Slider", nil, performancePage, "OptionsSliderTemplate")
     scaleSlider:SetPoint("TOPLEFT", 8, -y)
     scaleSlider:SetWidth(math.max(220, math.min(360, content:GetWidth() - 70)))
@@ -1259,14 +1263,14 @@ CreateOptions = function()
         PositionPerformance()
         scaleLabel:SetText(string.format("%.0f%%", db.performanceScale * 100))
     end)
-    local moveButton = AddButton(performancePage, "Mover / bloquear visor")
+    local moveButton = AddButton(performancePage, L.MoveOrLockDisplay)
     moveButton:SetSize(174, 28)
     moveButton:SetPoint("TOPLEFT", 8, -y - 40)
     moveButton:SetScript("OnClick", function()
         panel:Hide()
         TogglePerformanceMover()
     end)
-    local resetButton = AddButton(performancePage, "Restaurar posición")
+    local resetButton = AddButton(performancePage, L.ResetPosition)
     resetButton:SetSize(152, 28)
     if initialContentWidth >= 360 then
         resetButton:SetPoint("LEFT", moveButton, "RIGHT", 8, 0)
@@ -1284,17 +1288,17 @@ CreateOptions = function()
 
     local groupListTitle = barPage:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     groupListTitle:SetPoint("TOPLEFT", 4, -selectorStartY - 8)
-    groupListTitle:SetText("Grupos")
+    groupListTitle:SetText(L.Groups)
     groupListTitle:SetTextColor(unpack(colors.muted))
 
-    local addGroup = AddButton(barPage, "+ Crear", "primary")
+    local addGroup = AddButton(barPage, L.CreateGroup, "primary")
     addGroup:SetSize(66, 24)
     addGroup:SetPoint("TOPRIGHT", barPage, "TOPLEFT", selectorWidth, -selectorStartY)
 
     local selectedGroupID
     local groupButtons = {}
     for id = 1, 8 do
-        local button = AddSelectionRow(barPage, "Grupo " .. id)
+        local button = AddSelectionRow(barPage, L.GroupName:format(id))
         button:SetSize(selectorWidth, 30)
         button:SetScript("OnClick", function()
             selectedGroupID = id
@@ -1320,7 +1324,7 @@ CreateOptions = function()
 
     local policyLabel = groupEditor:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     policyLabel:SetPoint("TOPLEFT", editorInset, -39)
-    policyLabel:SetText("Visibilidad")
+    policyLabel:SetText(L.Visibility)
     policyLabel:SetTextColor(unpack(colors.muted))
     local policyButton = AddButton(groupEditor, "", nil, true)
     policyButton:SetSize(176, 28)
@@ -1348,7 +1352,7 @@ CreateOptions = function()
     groupEditor:SetScript("OnHide", function()
         if UIDROPDOWNMENU_OPEN_MENU == policyDropdown then CloseDropDownMenus() end
     end)
-    local deleteGroup = AddButton(groupEditor, "Eliminar grupo", "danger")
+    local deleteGroup = AddButton(groupEditor, L.DeleteGroup, "danger")
     deleteGroup:SetSize(112, 26)
     deleteGroup:SetPoint("TOPRIGHT", -8, -8)
     deleteGroup:SetScript("OnClick", function()
@@ -1364,7 +1368,7 @@ CreateOptions = function()
 
     local availableBars = groupEditor:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     availableBars:SetPoint("TOPLEFT", editorInset, -94)
-    availableBars:SetText("Barras")
+    availableBars:SetText(L.Bars)
     availableBars:SetTextColor(unpack(colors.muted))
     local membershipGap = 8
     local editorWidth = initialContentWidth - editorLeft - 4
@@ -1396,11 +1400,11 @@ CreateOptions = function()
 
         rowFrame:SetScript("OnEnter", function(self)
             local assignedGroup = GroupForBar(name)
-            local action = "Clic para añadir al grupo."
+            local action = L.ClickToAddBar
             if assignedGroup == selectedGroupID then
-                action = "Clic para quitar del grupo."
+                action = L.ClickToRemoveBar
             elseif assignedGroup then
-                action = "Clic para mover desde Grupo " .. assignedGroup .. "."
+                action = L.ClickToMoveBar:format(assignedGroup)
             end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetText(label)
@@ -1436,7 +1440,7 @@ CreateOptions = function()
     emptyGroupMessage:SetPoint("RIGHT", barPage, "RIGHT", -8, 0)
     emptyGroupMessage:SetJustifyH("LEFT")
     emptyGroupMessage:SetTextColor(unpack(colors.muted))
-    emptyGroupMessage:SetText("Todavía no hay grupos. Crea uno para elegir qué barras controla.")
+    emptyGroupMessage:SetText(L.NoGroups)
     RefreshGroupUI = function()
         if not selectedGroupID or not db.groups[selectedGroupID] then
             selectedGroupID = nil
@@ -1461,7 +1465,7 @@ CreateOptions = function()
                 for _, name in ipairs(names) do
                     if db.barGroups[name] == id then memberCount = memberCount + 1 end
                 end
-                button.label:SetText("Grupo " .. id .. " · " .. memberCount)
+                button.label:SetText(L.GroupWithCount:format(id, memberCount))
                 SetSelected(button, id == selectedGroupID)
             end
         end
@@ -1472,7 +1476,7 @@ CreateOptions = function()
         groupEditor:SetShown(hasSelection)
         emptyGroupMessage:SetShown(not hasSelection)
         if hasSelection then
-            editorTitle:SetText("Grupo " .. selectedGroupID)
+            editorTitle:SetText(L.GroupName:format(selectedGroupID))
             policyButton.label:SetText(GroupPolicyText(db.groups[selectedGroupID]))
             for _, name in ipairs(names) do
                 local row = membershipRowsByBar[name]
@@ -1480,7 +1484,7 @@ CreateOptions = function()
                 local selected = assignedGroup == selectedGroupID
                 row.check:SetChecked(selected)
                 local inOtherGroup = assignedGroup ~= nil and not selected
-                row.state:SetText(inOtherGroup and "Grupo " .. assignedGroup or "")
+                row.state:SetText(inOtherGroup and L.GroupName:format(assignedGroup) or "")
                 local background = selected and colors.activeGroupBar
                     or inOtherGroup and colors.otherGroup or colors.row
                 row.frame.bg:SetColorTexture(unpack(background))
@@ -1541,8 +1545,8 @@ controller:SetScript("OnEvent", function(_, event, loaded)
         if type(db.playerPortraitSize) ~= "number" or db.playerPortraitSize < 24
             or db.playerPortraitSize > 120 then db.playerPortraitSize = 48 end
         if type(db.showPerformance) ~= "boolean" then db.showPerformance = true end
-        for _, metric in ipairs(performanceMetrics) do
-            if type(db[metric.key]) ~= "boolean" then db[metric.key] = true end
+        for _, key in ipairs(performanceMetrics) do
+            if type(db[key]) ~= "boolean" then db[key] = true end
         end
         local scale = db.performanceScale
         if type(scale) ~= "number" or scale ~= scale or scale < 0.75 or scale > 1.5 then
@@ -1682,24 +1686,24 @@ SlashCmdList.FOREVERHOVERBARS = function(message)
     elseif message == "level reset" then
         db.levelOffsetX, db.levelOffsetY = nil, nil
         UpdateLevelBadgePositions()
-        print("ForeverHoverBars: posicion original del nivel restaurada.")
+        Notify(L.LevelPositionReset)
     elseif message == "player" then
         TogglePlayerMover()
     elseif message == "target" then
-        print("ForeverHUD: mueve el marco del objetivo con Edit Mode.")
+        Notify(L.MoveTargetInEditMode)
     elseif message == "target reset" then
-        print("ForeverHUD: la posición del objetivo se controla con Edit Mode.")
+        Notify(L.TargetPositionEditMode)
     elseif message == "tooltip" then
-        print("ForeverHUD: las descripciones usan el anclaje nativo de Blizzard.")
+        Notify(L.NativeTooltips)
     elseif message == "tooltip reset" then
-        print("ForeverHUD: las descripciones usan el anclaje nativo de Blizzard.")
-    elseif message == "rendimiento" then
+        Notify(L.NativeTooltips)
+    elseif message == "rendimiento" or message == "performance" then
         TogglePerformanceMover()
-    elseif message == "rendimiento reset" then
+    elseif message == "rendimiento reset" or message == "performance reset" then
         ResetPerformancePosition()
     elseif message == "toggle" then
         db.enabled = not db.enabled
-        print("ForeverHoverBars: " .. (db.enabled and "hover activado" or "barras visibles"))
+        Notify(db.enabled and L.HoverEnabled or L.BarsVisible)
     else
         if not panel then CreateOptions() end
         panel:SetShown(not panel:IsShown())

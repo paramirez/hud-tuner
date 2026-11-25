@@ -1,7 +1,10 @@
 ## Interface: 16001
-## Title: Forever Hover Bars
-## Notes: Barras hover, iconos de unidad y visor de FPS/latencia. /foreverhud
-## Version: 2.8
+## Title: HUD Tuner
+## Notes: Action bar visibility, unit portraits, FPS/latency, and objective tracker controls. /foreverhud
+## Notes-esES: Visibilidad de barras, retratos, FPS/latencia y control del rastreador. /foreverhud
+## Notes-esMX: Visibilidad de barras, retratos, FPS/latencia y control del rastreador. /foreverhud
+## Version: 2.9
 ## SavedVariablesPerCharacter: ForeverHoverBarsDB
 
+Localization.lua
 ForeverHoverBars.lua
