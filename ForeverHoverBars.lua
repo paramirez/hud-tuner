@@ -1,6 +1,7 @@
 local addonName, addon = ...
 local L = addon.L
 local addonTitle = "HUD Tuner"
+local technicalCyan = { 0, 0xB4 / 255, 0xD8 / 255, 1 }
 
 local function Notify(message)
     print(addonTitle .. ": " .. message)
@@ -9,7 +10,18 @@ end
 local controller = CreateFrame("Frame")
 local bars, panel = {}
 local RefreshGroupUI
+local hudEditor
 local CreateOptions
+
+local function ToggleOptions()
+    if hudEditor and hudEditor:IsShown() then
+        hudEditor:Hide()
+        return
+    end
+    if not panel then CreateOptions() end
+    panel:SetShown(not panel:IsShown())
+end
+
 local hoverValues = { fadeIn = 0.25, fadeOut = 0.5, hideDelay = 0.3, minAlpha = 0 }
 local names = {
     "MainActionBar", "MultiBarBottomLeft", "MultiBarBottomRight",
@@ -60,6 +72,12 @@ local function SetClassIcon(texture, unit)
         texture:SetTexCoord(0, 1, 0, 1)
     end
 end
+local function StyleIconText(text, size)
+    text:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", size, "")
+    text:SetTextColor(0.78, 0.78, 0.78)
+    text:SetShadowColor(0, 0, 0, 0)
+end
+
 local function PositionLevelBadge(button)
     if not button or not button.levelBadge then return end
     button.levelBadge:ClearAllPoints()
@@ -74,28 +92,18 @@ local function UpdatePortraitLevel(button, unit)
         badge:SetHeight(15)
         local bg = badge:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints()
-        bg:SetColorTexture(0.025, 0.035, 0.055, 0.94)
-        local border = {}
-        for i = 1, 4 do
-            border[i] = badge:CreateTexture(nil, "BORDER")
-            border[i]:SetColorTexture(0.82, 0.64, 0.3, 1)
-        end
-        border[1]:SetPoint("TOPLEFT"); border[1]:SetPoint("TOPRIGHT"); border[1]:SetHeight(1)
-        border[2]:SetPoint("BOTTOMLEFT"); border[2]:SetPoint("BOTTOMRIGHT"); border[2]:SetHeight(1)
-        border[3]:SetPoint("TOPLEFT"); border[3]:SetPoint("BOTTOMLEFT"); border[3]:SetWidth(1)
-        border[4]:SetPoint("TOPRIGHT"); border[4]:SetPoint("BOTTOMRIGHT"); border[4]:SetWidth(1)
-        local text = badge:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        bg:SetColorTexture(0.065, 0.065, 0.065, 0.75)
+        local text = badge:CreateFontString(nil, "OVERLAY")
         text:SetPoint("CENTER")
-        text:SetTextColor(1, 0.91, 0.68, 1)
         button.levelBadge = badge
         button.levelText = text
     end
     PositionLevelBadge(button)
     local level = UnitLevel and UnitLevel(unit)
     local label = (not level or level < 1) and "??" or tostring(level)
-    button.levelText:SetText(label)
     local fontSize = math.max(9, math.min(13, button:GetWidth() * 0.25))
-    button.levelText:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
+    StyleIconText(button.levelText, fontSize)
+    button.levelText:SetText(label)
     button.levelBadge:SetWidth(math.max(21, button.levelText:GetStringWidth() + 8))
     button.levelBadge:Show()
 end
@@ -143,10 +151,11 @@ local function ToggleLevelMover()
         levelMover:RegisterForDrag("LeftButton")
         local bg = levelMover:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints()
-        bg:SetColorTexture(0.55, 0.42, 0.23, 0.62)
+        bg:SetColorTexture(0.075, 0.28, 0.34, 0.62)
         local label = levelMover:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         label:SetPoint("CENTER")
         label:SetText(L.LevelDrag)
+        label:SetTextColor(unpack(technicalCyan))
         levelMover:SetScript("OnDragStart", function(self)
             if not InCombatLockdown() then
                 self:StartMoving()
@@ -234,10 +243,11 @@ local function TogglePlayerMover()
         playerMover:RegisterForDrag("LeftButton")
         local bg = playerMover:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints()
-        bg:SetColorTexture(0.55, 0.42, 0.23, 0.55)
+        bg:SetColorTexture(0.075, 0.28, 0.34, 0.55)
         local label = playerMover:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         label:SetPoint("CENTER")
         label:SetText(L.DragToMove)
+        label:SetTextColor(unpack(technicalCyan))
         playerMover:SetScript("OnDragStart", function(self)
             if not InCombatLockdown() then
                 self:StartMoving()
@@ -280,6 +290,7 @@ local function TogglePlayerMover()
         local title = controls:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("TOP", 0, -12)
         title:SetText(L.MovePlayerIcon)
+        title:SetTextColor(unpack(technicalCyan))
         local hint = controls:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         hint:SetPoint("TOP", title, "BOTTOM", 0, -4)
         hint:SetText(L.DragOrArrows)
@@ -489,8 +500,7 @@ local function CreateMinimapButton()
             self.ignoreNextClick = false
             return
         end
-        if not panel then CreateOptions() end
-        panel:SetShown(not panel:IsShown())
+        ToggleOptions()
     end)
     minimapButton:SetScript("OnDragStart", function(self)
         self.dragging = true
@@ -556,10 +566,11 @@ local function ToggleTargetMover()
         targetMover:RegisterForDrag("LeftButton")
         local bg = targetMover:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints()
-        bg:SetColorTexture(0.55, 0.42, 0.23, 0.55)
+        bg:SetColorTexture(0.075, 0.28, 0.34, 0.55)
         local label = targetMover:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         label:SetPoint("CENTER")
         label:SetText(L.DragToMove)
+        label:SetTextColor(unpack(technicalCyan))
         targetMover:SetScript("OnDragStart", function(self)
             if not InCombatLockdown() then
                 self:StartMoving()
@@ -602,6 +613,7 @@ local function ToggleTargetMover()
         local title = controls:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("TOP", 0, -12)
         title:SetText(L.MoveTargetIcon)
+        title:SetTextColor(unpack(technicalCyan))
         local hint = controls:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         hint:SetPoint("TOP", title, "BOTTOM", 0, -4)
         hint:SetText(L.DragOrArrows)
@@ -720,7 +732,7 @@ local function UpdatePerformance()
     local visible = performanceMoving
         or (db.showPerformance and (db.showFPS or db.showHome or db.showWorld))
     performance:EnableMouse(performanceMoving == true)
-    performance.bg:SetColorTexture(0.10, 0.085, 0.065, performanceMoving and 0.96 or 0.84)
+    performance.bg:SetColorTexture(0.071, 0.082, 0.094, performanceMoving and 0.96 or 0.84)
     performance:SetShown(visible and true or false)
     if visible then SamplePerformance() end
 end
@@ -841,6 +853,16 @@ local function GroupForBar(name)
     return db.barGroups[name]
 end
 
+local function GroupDisplayName(id)
+    return db.groupNames[id] or L.GroupName:format(id)
+end
+
+local function CleanGroupName(name)
+    if type(name) ~= "string" or #name > 128 or name:find("[%c|]") then return end
+    local trimmed = name:match("^%s*(.-)%s*$")
+    if trimmed ~= "" then return trimmed end
+end
+
 local function InitializeGroups()
     if type(db.groups) ~= "table" then db.groups = {} end
     if type(db.barGroups) ~= "table" then db.barGroups = {} end
@@ -851,6 +873,11 @@ local function InitializeGroups()
         elseif not validGroupPolicies[policy] then
             db.groups[groupID] = "hover"
         end
+    end
+
+    if type(db.groupNames) ~= "table" then db.groupNames = {} end
+    for id, name in pairs(db.groupNames) do
+        db.groupNames[id] = db.groups[id] and CleanGroupName(name) or nil
     end
 
     local validBars = {}
@@ -868,16 +895,51 @@ local function GroupPolicyText(policyKey)
     end
     return L.ShowOnHover
 end
+local profileTables = { "groups", "groupNames", "barGroups" }
+local profileSettings = {
+    "enabled", "hidePlayerFrame", "hideTargetFrame", "playerPortraitSize",
+    "playerPortraitX", "playerPortraitY", "targetPortraitX", "targetPortraitY",
+    "levelOffsetX", "levelOffsetY", "showMinimapButton", "minimapButtonAngle",
+    "hideBlizzardQuestTracker", "showPerformance", "showFPS", "showHome",
+    "showWorld", "performanceScale", "performanceX", "performanceY",
+}
+local profileKey
+
+local function CopyMap(source)
+    local result = {}
+    if type(source) == "table" then
+        for key, value in pairs(source) do result[key] = value end
+    end
+    return result
+end
+
+local function CopyProfile(source, destination)
+    for _, key in ipairs(profileSettings) do destination[key] = source[key] end
+    for _, key in ipairs(profileTables) do destination[key] = CopyMap(source[key]) end
+    return destination
+end
+
+local function SaveCharacterProfile()
+    if db and profileKey then
+        HUDTunerCharacterProfiles[profileKey] = CopyProfile(db, {})
+    end
+end
+
 local questTrackerHooked
 local questTrackerHidden
 local questTrackerAlpha
 
+local questTrackerPending
 local function ApplyQuestTrackerVisibility()
     local tracker = ObjectiveTrackerFrame
     if not db or not tracker then return end
 
     local hide = db.hideBlizzardQuestTracker
     local locked = InCombatLockdown() and tracker:IsProtected()
+    questTrackerPending = locked and ((hide and tracker:IsShown()) or (not hide and questTrackerHidden))
+    if panel and panel.questTrackerStatus then
+        panel.questTrackerStatus:SetShown(questTrackerPending and true or false)
+    end
     if hide and not questTrackerHooked then
         questTrackerHooked = true
         tracker:HookScript("OnShow", ApplyQuestTrackerVisibility)
@@ -905,19 +967,20 @@ local function ApplyQuestTrackerVisibility()
 end
 
 CreateOptions = function()
+    local RefreshAll
     local width = math.min(900, UIParent:GetWidth() - 32)
     local height = math.min(490, UIParent:GetHeight() - 32)
     local colors = {
-        window = { 0.065, 0.075, 0.095, 0.98 },
-        card = { 0.087, 0.103, 0.13, 1 },
-        row = { 0.107, 0.125, 0.156, 1 },
-        border = { 0.22, 0.25, 0.30, 1 },
-        accent = { 0.89, 0.73, 0.42, 1 },
+        window = { 0x12 / 255, 0x15 / 255, 0x18 / 255, 0.93 },
+        card = { 0x1E / 255, 0x23 / 255, 0x29 / 255, 0.94 },
+        row = { 0x1E / 255, 0x23 / 255, 0x29 / 255, 1 },
+        border = { 0.22, 0.26, 0.30, 1 },
+        accent = technicalCyan,
         text = { 0.91, 0.93, 0.97, 1 },
         muted = { 0.67, 0.72, 0.80, 1 },
-        selected = { 0.19, 0.17, 0.14, 1 },
-        activeGroupBar = { 0.19, 0.145, 0.09, 1 },
-        otherGroup = { 0.21, 0.19, 0.16, 1 },
+        selected = { 0.075, 0.185, 0.225, 1 },
+        activeGroupBar = { 0.055, 0.155, 0.185, 1 },
+        otherGroup = { 0.145, 0.20, 0.235, 1 },
         danger = { 0.96, 0.56, 0.52, 1 },
         clear = { 0, 0, 0, 0 },
     }
@@ -954,12 +1017,28 @@ CreateOptions = function()
         return texture
     end
 
+    local function AddHoverBorder(button)
+        local edges = {
+            { "TOPLEFT", "TOPRIGHT", true },
+            { "BOTTOMLEFT", "BOTTOMRIGHT", true },
+            { "TOPLEFT", "BOTTOMLEFT", false },
+            { "TOPRIGHT", "BOTTOMRIGHT", false },
+        }
+        for _, edge in ipairs(edges) do
+            local line = button:CreateTexture(nil, "HIGHLIGHT")
+            line:SetPoint(edge[1])
+            line:SetPoint(edge[2])
+            if edge[3] then line:SetHeight(1) else line:SetWidth(1) end
+            line:SetColorTexture(unpack(colors.accent))
+        end
+    end
+
     local function AddButton(parent, text, kind, leftAligned)
         local button = CreateFrame("Button", nil, parent)
         local background = kind == "primary" and colors.selected
             or (kind == "quiet" or kind == "danger") and colors.clear or colors.row
         button.bg = ColorTexture(button, "BACKGROUND", background)
-        button:SetHighlightTexture(ColorTexture(button, "HIGHLIGHT", { 1, 1, 1, 0.075 }))
+        AddHoverBorder(button)
         button:SetPushedTexture(ColorTexture(button, "ARTWORK", { 0, 0, 0, 0.22 }))
         local label = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         label:SetPoint("TOPLEFT", 10, 0)
@@ -1000,8 +1079,11 @@ CreateOptions = function()
         inset:SetPoint("TOPLEFT", 1, -1)
         inset:SetPoint("BOTTOMRIGHT", -1, 1)
         check:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
-        check:GetCheckedTexture():SetAllPoints()
-        check:SetHighlightTexture(ColorTexture(check, "HIGHLIGHT", { 1, 1, 1, 0.14 }))
+        local tick = check:GetCheckedTexture()
+        tick:SetAllPoints()
+        tick:SetDesaturated(true)
+        tick:SetVertexColor(unpack(technicalCyan))
+        AddHoverBorder(check)
         return check
     end
 
@@ -1013,7 +1095,7 @@ CreateOptions = function()
     title:SetPoint("LEFT")
     title:SetText(addonTitle)
     title:SetTextColor(unpack(colors.accent))
-    AddRule(header, "BOTTOMLEFT", "BOTTOMLEFT", 0, 0, width - 32, 1, unpack(colors.border))
+    AddRule(header, "BOTTOMLEFT", "BOTTOMLEFT", 0, 0, width - 32, 1, unpack(colors.row))
 
     local close = AddButton(header, "×", "quiet")
     close:SetSize(36, 28)
@@ -1031,6 +1113,297 @@ CreateOptions = function()
     end)
     panel.enabled = enabled
 
+    local editHud = AddButton(header, L.EditHUD, "primary")
+    editHud:SetSize(100, 28)
+    editHud:SetPoint("RIGHT", enabledLabel, "LEFT", -14, 0)
+
+    hudEditor = CreateFrame("Frame", "HUDTunerLayoutEditor", UIParent)
+    hudEditor:SetAllPoints(UIParent)
+    hudEditor:SetFrameStrata("DIALOG")
+    hudEditor:EnableMouse(false)
+    hudEditor:Hide()
+
+    local function MakeGuide(opacity)
+        local line = hudEditor:CreateTexture(nil, "BACKGROUND")
+        line:SetColorTexture(technicalCyan[1], technicalCyan[2], technicalCyan[3], opacity)
+        return line
+    end
+    local centerVertical, centerHorizontal = MakeGuide(0.28), MakeGuide(0.28)
+    centerVertical:SetWidth(1)
+    centerVertical:SetPoint("TOP")
+    centerVertical:SetPoint("BOTTOM")
+    centerHorizontal:SetHeight(1)
+    centerHorizontal:SetPoint("LEFT")
+    centerHorizontal:SetPoint("RIGHT")
+
+    local snapVertical, snapHorizontal = MakeGuide(0.66), MakeGuide(0.66)
+    snapVertical:SetWidth(1)
+    snapHorizontal:SetHeight(1)
+
+    local function HideSnapGuides()
+        snapVertical:Hide()
+        snapHorizontal:Hide()
+    end
+    HideSnapGuides()
+
+    local function CenterInParent(frame)
+        if not frame then return end
+        local x, y = frame:GetCenter()
+        if not x or not y then return end
+        local scale = frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+        return x * scale, y * scale
+    end
+
+    local hiddenOriginals = {}
+    local alphaHooks = {}
+
+    local function KeepOriginalHidden(frame)
+        local original = hiddenOriginals[frame]
+        if not original or original.settingAlpha then return end
+
+        -- Preserve changes made by Blizzard or another addon while the editor is open.
+        original.alpha = frame:GetAlpha()
+        original.settingAlpha = true
+        frame:SetAlpha(0)
+        original.settingAlpha = nil
+    end
+
+    local function HideLayoutOriginal(frame)
+        if not frame or hiddenOriginals[frame] then return end
+        if not alphaHooks[frame] then
+            hooksecurefunc(frame, "SetAlpha", KeepOriginalHidden)
+            alphaHooks[frame] = true
+        end
+        hiddenOriginals[frame] = {}
+        KeepOriginalHidden(frame)
+    end
+
+    local function RestoreLayoutOriginals()
+        for frame, original in pairs(hiddenOriginals) do
+            hiddenOriginals[frame] = nil
+            frame:SetAlpha(original.alpha)
+        end
+    end
+
+    local movers = {}
+    local function SnapPosition(mover, x, y)
+        local snapX, snapY
+        local xDistance, yDistance = 10, 10
+        local function Consider(otherX, otherY)
+            if otherX and math.abs(x - otherX) < xDistance then
+                snapX, xDistance = otherX, math.abs(x - otherX)
+            end
+            if otherY and math.abs(y - otherY) < yDistance then
+                snapY, yDistance = otherY, math.abs(y - otherY)
+            end
+        end
+        Consider(UIParent:GetWidth() / 2, UIParent:GetHeight() / 2)
+        for _, other in ipairs(movers) do
+            if other ~= mover then Consider(CenterInParent(other)) end
+        end
+        return snapX, snapY
+    end
+
+    local function PositionMover(mover, x, y)
+        local halfWidth, halfHeight = mover:GetWidth() / 2, mover:GetHeight() / 2
+        x = math.max(halfWidth, math.min(UIParent:GetWidth() - halfWidth, x))
+        y = math.max(halfHeight, math.min(UIParent:GetHeight() - halfHeight, y))
+        mover:ClearAllPoints()
+        mover:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
+    end
+
+    local function ShowSnapGuides(mover)
+        local x, y = CenterInParent(mover)
+        if not x then return end
+        local snapX, snapY = SnapPosition(mover, x, y)
+        if snapX then
+            snapVertical:ClearAllPoints()
+            snapVertical:SetPoint("TOP", hudEditor, "TOPLEFT", snapX, 0)
+            snapVertical:SetPoint("BOTTOM", hudEditor, "BOTTOMLEFT", snapX, 0)
+        end
+        if snapY then
+            snapHorizontal:ClearAllPoints()
+            snapHorizontal:SetPoint("LEFT", hudEditor, "BOTTOMLEFT", 0, snapY)
+            snapHorizontal:SetPoint("RIGHT", hudEditor, "BOTTOMRIGHT", 0, snapY)
+        end
+        snapVertical:SetShown(snapX ~= nil)
+        snapHorizontal:SetShown(snapY ~= nil)
+    end
+
+    local function StopLayoutDrag(mover, keepPosition)
+        if not mover.dragging then return end
+        mover:StopMovingOrSizing()
+        mover:SetScript("OnUpdate", nil)
+        mover.dragging = nil
+        HideSnapGuides()
+        if not keepPosition then return end
+        local x, y = CenterInParent(mover)
+        if x then
+            local snapX, snapY = SnapPosition(mover, x, y)
+            PositionMover(mover, snapX or x, snapY or y)
+            mover.changed = true
+        end
+    end
+
+    local function LayoutBox(background)
+        local frame = CreateFrame("Frame", nil, hudEditor, "BackdropTemplate")
+        frame:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            edgeSize = 1,
+        })
+        frame:SetBackdropColor(unpack(background))
+        frame:SetBackdropBorderColor(unpack(colors.border))
+        frame:EnableMouse(true)
+        return frame
+    end
+
+    local function AddLayoutMover(label, xKey, yKey, getFrame, unit)
+        local mover = CreateFrame("Frame", nil, hudEditor, "BackdropTemplate")
+        mover:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        mover:SetBackdropBorderColor(technicalCyan[1], technicalCyan[2], technicalCyan[3], 0.8)
+        mover:EnableMouse(true)
+        mover:SetMovable(true)
+        mover:SetClampedToScreen(true)
+        mover:RegisterForDrag("LeftButton")
+        mover.xKey, mover.yKey, mover.getFrame, mover.unit = xKey, yKey, getFrame, unit
+        local text = mover:CreateFontString(nil, "OVERLAY")
+        StyleIconText(text, 11)
+        text:SetText(label)
+        text:SetPoint("TOP", mover, "BOTTOM", 0, -4)
+        if unit then
+            mover.icon = mover:CreateTexture(nil, "ARTWORK")
+            mover.icon:SetAllPoints()
+            mover.icon:SetAlpha(0.58)
+        else
+            local sample = mover:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+            sample:SetPoint("CENTER")
+            sample:SetAlpha(0.70)
+            mover.sample = sample
+        end
+        mover:SetScript("OnDragStart", function(self)
+            self:StartMoving()
+            self.dragging = true
+            self:SetScript("OnUpdate", ShowSnapGuides)
+        end)
+        mover:SetScript("OnDragStop", function(self) StopLayoutDrag(self, true) end)
+        movers[#movers + 1] = mover
+    end
+
+    AddLayoutMover(L.PlayerLayout, "playerPortraitX", "playerPortraitY",
+        function() return (db.hidePlayerFrame and playerPortrait) or PlayerFrame end, "player")
+    AddLayoutMover(L.TargetLayout, "targetPortraitX", "targetPortraitY",
+        function() return (db.hideTargetFrame and targetPortrait) or TargetFrame end, "target")
+    AddLayoutMover(L.PerformanceLayout, "performanceX", "performanceY", function() return performance end)
+
+    local editToolbar = LayoutBox(colors.window)
+    editToolbar:SetFrameLevel(hudEditor:GetFrameLevel() + 5)
+    editToolbar:SetSize(math.min(440, width), 100)
+    editToolbar:SetPoint("TOP", 0, -62)
+    editToolbar:SetMovable(true)
+    editToolbar:SetClampedToScreen(true)
+    editToolbar:RegisterForDrag("LeftButton")
+    editToolbar:SetScript("OnDragStart", editToolbar.StartMoving)
+    editToolbar:SetScript("OnDragStop", editToolbar.StopMovingOrSizing)
+    editToolbar:SetScript("OnHide", editToolbar.StopMovingOrSizing)
+    local editTitle = editToolbar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    editTitle:SetPoint("TOP", 0, -10)
+    editTitle:SetText(L.EditHUD)
+    editTitle:SetTextColor(unpack(colors.accent))
+    local editHelp = editToolbar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    editHelp:SetPoint("TOPLEFT", 12, -36)
+    editHelp:SetPoint("TOPRIGHT", -12, -36)
+    editHelp:SetText(L.EditHUDHelp)
+    editHelp:SetTextColor(unpack(colors.muted))
+
+    local function CanEditHUD()
+        if InCombatLockdown() then
+            Notify(L.EditHUDOutOfCombat)
+            return false
+        end
+        if EditModeManagerFrame and EditModeManagerFrame:IsShown() then
+            Notify(L.ExitEditMode)
+            return false
+        end
+        return true
+    end
+
+    editHud:SetScript("OnClick", function()
+        if not CanEditHUD() then return end
+        if (playerMover and playerMover:IsShown()) or (targetMover and targetMover:IsShown())
+            or performanceMoving then
+            Notify(L.ClosePositionControls)
+            return
+        end
+        local screenWidth, screenHeight = UIParent:GetWidth(), UIParent:GetHeight()
+        local size = db.playerPortraitSize or 48
+        for index, mover in ipairs(movers) do
+            local frame = mover.getFrame()
+            local x, y = db[mover.xKey], db[mover.yKey]
+            if not x or not y then x, y = CenterInParent(frame) end
+            if mover.unit then
+                mover:SetSize(size, size)
+                SetClassIcon(mover.icon, mover.unit)
+                PositionMover(mover, x or screenWidth * (index == 1 and 0.35 or 0.65),
+                    y or screenHeight * 0.45)
+            else
+                local frameScale = frame and frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+                    or db.performanceScale or 1
+                local previewWidth = (frame and frame:GetWidth() or 58) * frameScale
+                local previewHeight = (frame and frame:GetHeight() or 20) * frameScale
+                mover:SetSize(previewWidth, previewHeight)
+                if frame then
+                    local font, fontSize, flags = frame.label:GetFont()
+                    if font and fontSize then mover.sample:SetFont(font, fontSize * frameScale, flags) end
+                    mover.sample:SetText(frame:IsShown() and frame.label:GetText() or "")
+                else
+                    mover.sample:SetText("")
+                end
+                PositionMover(mover, x or screenWidth / 2, y or screenHeight - 20 - previewHeight / 2)
+            end
+            mover.changed = nil
+        end
+        for _, mover in ipairs(movers) do HideLayoutOriginal(mover.getFrame()) end
+        panel:Hide()
+        hudEditor:Show()
+    end)
+
+    local cancelLayout = AddButton(editToolbar, L.Cancel, "quiet")
+    cancelLayout:SetSize(94, 28)
+    cancelLayout:SetPoint("BOTTOMRIGHT", -108, 9)
+    cancelLayout:SetScript("OnClick", function() hudEditor:Hide() end)
+
+    local saveLayout = AddButton(editToolbar, L.Save, "primary")
+    saveLayout:SetSize(94, 28)
+    saveLayout:SetPoint("BOTTOMRIGHT", -10, 9)
+    saveLayout:SetScript("OnClick", function()
+        if not CanEditHUD() then
+            hudEditor:Hide()
+            return
+        end
+        for _, mover in ipairs(movers) do
+            StopLayoutDrag(mover, true)
+            if mover.changed then
+                local x, y = CenterInParent(mover)
+                if x then db[mover.xKey], db[mover.yKey] = x, y end
+            end
+        end
+        if movers[1].changed then PositionPlayerPortrait(db.playerPortraitX, db.playerPortraitY) end
+        if movers[2].changed then PositionTargetPortrait(db.targetPortraitX, db.targetPortraitY) end
+        if movers[3].changed and performance then PositionPerformance() end
+        hudEditor:Hide()
+    end)
+    hudEditor:SetScript("OnHide", function(self)
+        if self:IsShown() then self:Hide() end
+        for _, mover in ipairs(movers) do StopLayoutDrag(mover, false) end
+        HideSnapGuides()
+        RestoreLayoutOriginals()
+        if not InCombatLockdown() and not (EditModeManagerFrame and EditModeManagerFrame:IsShown()) then
+            panel:Show()
+        end
+    end)
+    table.insert(UISpecialFrames, "HUDTunerLayoutEditor")
+
     local body = CreateFrame("Frame", nil, panel)
     body:SetPoint("TOPLEFT", 16, -64)
     body:SetPoint("BOTTOMRIGHT", -16, 16)
@@ -1043,7 +1416,7 @@ CreateOptions = function()
     divider:SetPoint("TOPLEFT", navigation, "TOPRIGHT", 8, 0)
     divider:SetPoint("BOTTOMLEFT", navigation, "BOTTOMRIGHT", 8, 0)
     divider:SetWidth(1)
-    divider:SetColorTexture(unpack(colors.border))
+    divider:SetColorTexture(unpack(colors.row))
 
     local scroll = CreateFrame("ScrollFrame", "ForeverHoverBarsOptionsScroll",
         body, "UIPanelScrollFrameTemplate")
@@ -1070,6 +1443,7 @@ CreateOptions = function()
         { id = "bars", label = L.BarsAndGroups },
         { id = "frames", label = L.Frames },
         { id = "quests", label = L.Quests },
+        { id = "profiles", label = L.Profiles },
         { id = "performance", label = L.Performance },
     }
     local pages, navButtons = {}, {}
@@ -1186,6 +1560,7 @@ CreateOptions = function()
     portraitSizeSlider:SetObeyStepOnDrag(true)
     local portraitSizeLabel = framePage:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     portraitSizeLabel:SetPoint("LEFT", portraitSizeSlider, "RIGHT", 12, 0)
+    portraitSizeLabel:SetTextColor(unpack(colors.accent))
     portraitSizeSlider:SetScript("OnValueChanged", function(_, value)
         db.playerPortraitSize = math.floor(value / 4 + 0.5) * 4
         ApplyPlayerPortrait()
@@ -1230,7 +1605,13 @@ CreateOptions = function()
             db.hideBlizzardQuestTracker = value
             ApplyQuestTrackerVisibility()
         end)
-    questPage.contentHeight = y + 14
+    local questTrackerStatus = questPage:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    questTrackerStatus:SetPoint("TOPLEFT", 28, -y)
+    questTrackerStatus:SetText(L.AfterCombat)
+    questTrackerStatus:SetTextColor(unpack(colors.accent))
+    questTrackerStatus:SetShown(questTrackerPending and true or false)
+    panel.questTrackerStatus = questTrackerStatus
+    questPage.contentHeight = y + 30
 
     local performancePage = pages.performance
     y = AddHeading(performancePage, 8, L.Performance,
@@ -1256,6 +1637,7 @@ CreateOptions = function()
     scaleSlider:SetObeyStepOnDrag(true)
     local scaleLabel = performancePage:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     scaleLabel:SetPoint("LEFT", scaleSlider, "RIGHT", 12, 0)
+    scaleLabel:SetTextColor(unpack(colors.accent))
     scaleSlider:SetScript("OnValueChanged", function(_, value)
         SavePerformancePosition(performance)
         db.performanceScale = math.floor(value * 20 + 0.5) / 20
@@ -1280,8 +1662,52 @@ CreateOptions = function()
     resetButton:SetScript("OnClick", ResetPerformancePosition)
     performancePage.contentHeight = y + 110
 
+    local barPreview = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    barPreview:SetFrameStrata("HIGH")
+    barPreview:EnableMouse(false)
+    barPreview:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 2 })
+    barPreview:SetBackdropBorderColor(unpack(colors.accent))
+    barPreview:Hide()
+
+    local function PreviewBar(name)
+        barPreview:Hide()
+        local frame = _G[name]
+        if not frame or not frame:IsVisible() then return end
+        local left, bottom, width, height = frame:GetRect()
+        if not left or not bottom or not width or not height or width <= 0 or height <= 0 then return end
+        local scale = frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+        barPreview:ClearAllPoints()
+        barPreview:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", left * scale - 3, bottom * scale - 3)
+        barPreview:SetSize(width * scale + 6, height * scale + 6)
+        barPreview:Show()
+    end
+
+    local undoGroupChange
+    local undoButton = AddButton(barPage, L.Undo, "primary")
+    undoButton:SetSize(82, 24)
+    undoButton:SetPoint("TOPRIGHT", -4, -4)
+    undoButton:Hide()
+    local groupNotice = barPage:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    groupNotice:SetPoint("TOPLEFT", 4, -42)
+    groupNotice:SetPoint("TOPRIGHT", barPage, "TOPRIGHT", -4, -42)
+    groupNotice:SetJustifyH("LEFT")
+    groupNotice:SetTextColor(unpack(colors.accent))
+
+    local function SetGroupUndo(message, action)
+        undoGroupChange = action
+        undoButton:SetShown(action ~= nil)
+        groupNotice:SetText(message or "")
+    end
+
+    undoButton:SetScript("OnClick", function()
+        if not undoGroupChange then return end
+        undoGroupChange()
+        SetGroupUndo(L.ChangeUndone)
+        RefreshGroupUI()
+    end)
+
     local selectorWidth = initialContentWidth < 435 and 106 or 142
-    local selectorStartY = 56
+    local selectorStartY = 64
     local groupRowHeight = 34
     local editorLeft = selectorWidth + 12
     local editorInset = 12
@@ -1296,11 +1722,13 @@ CreateOptions = function()
     addGroup:SetPoint("TOPRIGHT", barPage, "TOPLEFT", selectorWidth, -selectorStartY)
 
     local selectedGroupID
+    local groupNameInput
     local groupButtons = {}
     for id = 1, 8 do
         local button = AddSelectionRow(barPage, L.GroupName:format(id))
         button:SetSize(selectorWidth, 30)
         button:SetScript("OnClick", function()
+            groupNameInput:ClearFocus()
             selectedGroupID = id
             RefreshGroupUI()
         end)
@@ -1318,17 +1746,59 @@ CreateOptions = function()
     groupEditor:SetBackdropColor(unpack(colors.card))
     groupEditor:SetBackdropBorderColor(unpack(colors.border))
 
-    local editorTitle = groupEditor:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    editorTitle:SetPoint("TOPLEFT", editorInset, -15)
-    editorTitle:SetTextColor(unpack(colors.text))
+    local nameLabel = groupEditor:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    nameLabel:SetPoint("TOPLEFT", editorInset, -14)
+    nameLabel:SetText(L.GroupNameLabel)
+    nameLabel:SetTextColor(unpack(colors.muted))
+
+    groupNameInput = CreateFrame("EditBox", nil, groupEditor)
+    groupNameInput:SetPoint("TOPLEFT", editorInset, -32)
+    groupNameInput:SetPoint("TOPRIGHT", groupEditor, "TOPRIGHT", -80, -32)
+    groupNameInput:SetHeight(26)
+    groupNameInput:SetFontObject(GameFontHighlight)
+    groupNameInput:SetTextInsets(8, 8, 0, 0)
+    groupNameInput:SetMaxLetters(32)
+    groupNameInput:SetAutoFocus(false)
+    ColorTexture(groupNameInput, "BACKGROUND", colors.row)
+
+    local saveNameButton = AddButton(groupEditor, L.Save, "quiet")
+    saveNameButton:SetSize(68, 26)
+    saveNameButton:SetPoint("LEFT", groupNameInput, "RIGHT", 4, 0)
+
+    local function SaveGroupName()
+        local id = selectedGroupID
+        if not id then return end
+        local input = groupNameInput:GetText()
+        local value = CleanGroupName(input)
+        if not value and input:match("%S") then
+            groupNameInput:SetText(GroupDisplayName(id))
+            groupNameInput:ClearFocus()
+            return
+        end
+        if value == L.GroupName:format(id) then value = nil end
+        if value ~= db.groupNames[id] then
+            db.groupNames[id] = value
+            SetGroupUndo()
+        end
+        groupNameInput:ClearFocus()
+        RefreshGroupUI()
+    end
+    groupNameInput:SetScript("OnEnterPressed", SaveGroupName)
+    groupNameInput:SetScript("OnEscapePressed", function(self)
+        self:SetText(GroupDisplayName(selectedGroupID))
+        self:ClearFocus()
+    end)
+    saveNameButton:SetScript("OnClick", SaveGroupName)
+    groupEditor:HookScript("OnHide", function() groupNameInput:ClearFocus() end)
 
     local policyLabel = groupEditor:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    policyLabel:SetPoint("TOPLEFT", editorInset, -39)
+    policyLabel:SetPoint("TOPLEFT", editorInset, -64)
     policyLabel:SetText(L.Visibility)
     policyLabel:SetTextColor(unpack(colors.muted))
     local policyButton = AddButton(groupEditor, "", nil, true)
     policyButton:SetSize(176, 28)
-    policyButton:SetPoint("TOPLEFT", editorInset, -54)
+    policyButton.label:SetTextColor(unpack(colors.accent))
+    policyButton:SetPoint("TOPLEFT", editorInset, -79)
     local policyArrow = policyButton:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     policyArrow:SetPoint("RIGHT", -9, 0)
     policyArrow:SetText("v")
@@ -1341,6 +1811,7 @@ CreateOptions = function()
         for _, item in ipairs(groupPolicies) do
             local key, label = item.key, item.label
             CreateMenuItem(label, db.groups[id] == key, function()
+                SetGroupUndo()
                 db.groups[id] = key
                 RefreshGroupUI()
             end)
@@ -1353,21 +1824,31 @@ CreateOptions = function()
         if UIDROPDOWNMENU_OPEN_MENU == policyDropdown then CloseDropDownMenus() end
     end)
     local deleteGroup = AddButton(groupEditor, L.DeleteGroup, "danger")
-    deleteGroup:SetSize(112, 26)
+    deleteGroup:SetSize(112, 22)
     deleteGroup:SetPoint("TOPRIGHT", -8, -8)
     deleteGroup:SetScript("OnClick", function()
         local id = selectedGroupID
         if not id then return end
+        local policy, customName = db.groups[id], db.groupNames[id]
+        local removed = {}
         for name, assignedGroup in pairs(db.barGroups) do
-            if assignedGroup == id then db.barGroups[name] = nil end
+            if assignedGroup == id then
+                removed[name] = true
+                db.barGroups[name] = nil
+            end
         end
-        db.groups[id] = nil
+        SetGroupUndo(L.GroupDeleted:format(GroupDisplayName(id)), function()
+            db.groups[id], db.groupNames[id] = policy, customName
+            for name in pairs(removed) do db.barGroups[name] = id end
+            selectedGroupID = id
+        end)
+        db.groups[id], db.groupNames[id] = nil, nil
         selectedGroupID = nil
         RefreshGroupUI()
     end)
 
     local availableBars = groupEditor:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    availableBars:SetPoint("TOPLEFT", editorInset, -94)
+    availableBars:SetPoint("TOPLEFT", editorInset, -119)
     availableBars:SetText(L.Bars)
     availableBars:SetTextColor(unpack(colors.muted))
     local membershipGap = 8
@@ -1383,9 +1864,9 @@ CreateOptions = function()
         local row = math.floor((index - 1) / membershipColumns)
         rowFrame:SetSize(membershipWidth, 30)
         rowFrame:SetPoint("TOPLEFT", editorInset + column * (membershipWidth + membershipGap),
-            -110 - row * 34)
+            -135 - row * 34)
         rowFrame.bg = ColorTexture(rowFrame, "BACKGROUND", colors.row)
-        rowFrame:SetHighlightTexture(ColorTexture(rowFrame, "HIGHLIGHT", { 1, 1, 1, 0.075 }))
+        AddHoverBorder(rowFrame)
 
         local check = AddCheckbox(rowFrame)
         check:SetPoint("LEFT", 8, 0)
@@ -1396,6 +1877,9 @@ CreateOptions = function()
         barLabel:SetText(label)
         local stateLabel = rowFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         stateLabel:SetPoint("RIGHT", -8, 0)
+        stateLabel:SetWidth(membershipWidth * 0.44)
+        stateLabel:SetJustifyH("RIGHT")
+        stateLabel:SetWordWrap(false)
         stateLabel:SetTextColor(unpack(colors.muted))
 
         rowFrame:SetScript("OnEnter", function(self)
@@ -1404,14 +1888,22 @@ CreateOptions = function()
             if assignedGroup == selectedGroupID then
                 action = L.ClickToRemoveBar
             elseif assignedGroup then
-                action = L.ClickToMoveBar:format(assignedGroup)
+                action = L.ClickToMoveBar:format(GroupDisplayName(assignedGroup))
             end
+            PreviewBar(name)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetText(label)
             GameTooltip:AddLine(action, unpack(colors.muted, 1, 3))
             GameTooltip:Show()
         end)
-        rowFrame:SetScript("OnLeave", GameTooltip_Hide)
+        local function StopPreview()
+            barPreview:Hide()
+            GameTooltip_Hide()
+        end
+        rowFrame:SetScript("OnLeave", StopPreview)
+        rowFrame:SetScript("OnHide", function(self)
+            if GameTooltip:GetOwner() == self then StopPreview() end
+        end)
         local rowData = {
             frame = rowFrame,
             state = stateLabel,
@@ -1420,10 +1912,17 @@ CreateOptions = function()
         local function ToggleMembership()
             local id = selectedGroupID
             if not id then return end
-            if db.barGroups[name] == id then
+            local previous = db.barGroups[name]
+            SetGroupUndo()
+            if previous == id then
                 db.barGroups[name] = nil
             else
                 db.barGroups[name] = id
+                if previous then
+                    SetGroupUndo(L.BarMoved:format(label, GroupDisplayName(id)), function()
+                        db.barGroups[name] = previous
+                    end)
+                end
             end
             RefreshGroupUI()
         end
@@ -1434,7 +1933,7 @@ CreateOptions = function()
         membershipRowsByBar[name] = rowData
     end
     local membershipRows = math.ceil(#names / membershipColumns)
-    groupEditor:SetHeight(118 + membershipRows * 34)
+    groupEditor:SetHeight(143 + membershipRows * 34)
     local emptyGroupMessage = barPage:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     emptyGroupMessage:SetPoint("TOPLEFT", groupEditor, "TOPLEFT", 12, -12)
     emptyGroupMessage:SetPoint("RIGHT", barPage, "RIGHT", -8, 0)
@@ -1465,7 +1964,8 @@ CreateOptions = function()
                 for _, name in ipairs(names) do
                     if db.barGroups[name] == id then memberCount = memberCount + 1 end
                 end
-                button.label:SetText(L.GroupWithCount:format(id, memberCount))
+                button.label:SetWordWrap(false)
+                button.label:SetText(L.GroupWithCount:format(GroupDisplayName(id), memberCount))
                 SetSelected(button, id == selectedGroupID)
             end
         end
@@ -1476,7 +1976,8 @@ CreateOptions = function()
         groupEditor:SetShown(hasSelection)
         emptyGroupMessage:SetShown(not hasSelection)
         if hasSelection then
-            editorTitle:SetText(L.GroupName:format(selectedGroupID))
+            groupNameInput:SetText(GroupDisplayName(selectedGroupID))
+            groupNameInput:SetCursorPosition(0)
             policyButton.label:SetText(GroupPolicyText(db.groups[selectedGroupID]))
             for _, name in ipairs(names) do
                 local row = membershipRowsByBar[name]
@@ -1484,7 +1985,7 @@ CreateOptions = function()
                 local selected = assignedGroup == selectedGroupID
                 row.check:SetChecked(selected)
                 local inOtherGroup = assignedGroup ~= nil and not selected
-                row.state:SetText(inOtherGroup and L.GroupName:format(assignedGroup) or "")
+                row.state:SetText(inOtherGroup and GroupDisplayName(assignedGroup) or "")
                 local background = selected and colors.activeGroupBar
                     or inOtherGroup and colors.otherGroup or colors.row
                 row.frame.bg:SetColorTexture(unpack(background))
@@ -1498,10 +1999,99 @@ CreateOptions = function()
         end
     end
     addGroup:SetScript("OnClick", function()
+        SetGroupUndo()
         selectedGroupID = CreateGroup()
         RefreshGroupUI()
     end)
-    local function RefreshAll()
+    local profilePage = pages.profiles
+    y = AddHeading(profilePage, 8, L.Profiles, L.ProfilesHelp)
+    local sourceCharacter
+    local profileMenu = CreateFrame("Frame", nil, profilePage, "UIDropDownMenuTemplate")
+    profileMenu:Hide()
+    local chooseProfile = AddButton(profilePage, L.ChooseCharacter, nil, true)
+    chooseProfile:SetSize(230, 30)
+    chooseProfile:SetPoint("TOPLEFT", 4, -y)
+
+    local copyButton = AddButton(profilePage, L.CopySettings, "primary")
+    copyButton:SetSize(170, 28)
+    copyButton:SetPoint("TOPLEFT", chooseProfile, "BOTTOMLEFT", 0, -12)
+    local profileStatus = profilePage:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    profileStatus:SetPoint("TOPLEFT", copyButton, "BOTTOMLEFT", 0, -10)
+    profileStatus:SetPoint("RIGHT", profilePage, "RIGHT", -4, 0)
+    profileStatus:SetJustifyH("LEFT")
+    profileStatus:SetTextColor(unpack(colors.muted))
+    profilePage.contentHeight = y + 128
+
+    local function AvailableProfiles()
+        local available = {}
+        for character, saved in pairs(HUDTunerCharacterProfiles or {}) do
+            if character ~= profileKey and type(character) == "string" and type(saved) == "table" then
+                available[#available + 1] = character
+            end
+        end
+        table.sort(available)
+        return available
+    end
+
+    local function RefreshProfileControls(message)
+        local available = AvailableProfiles()
+        if sourceCharacter and not (HUDTunerCharacterProfiles and HUDTunerCharacterProfiles[sourceCharacter]) then
+            sourceCharacter = nil
+        end
+        local canChoose = #available > 0
+        local inCombat = InCombatLockdown() and true or false
+        local canCopy = sourceCharacter ~= nil and not inCombat
+        chooseProfile.label:SetText(sourceCharacter or L.ChooseCharacter)
+        chooseProfile.label:SetWordWrap(false)
+        chooseProfile:SetEnabled(canChoose)
+        chooseProfile:SetAlpha(canChoose and 1 or 0.42)
+        copyButton:SetEnabled(canCopy)
+        copyButton:SetAlpha(canCopy and 1 or 0.42)
+        profileStatus:SetText(message or (not canChoose and L.NoSavedCharacters)
+            or (inCombat and L.CopyAfterCombat) or L.CopyReplacesSettings)
+    end
+    panel.RefreshProfileControls = RefreshProfileControls
+    profilePage:SetScript("OnShow", function() RefreshProfileControls() end)
+    profilePage:SetScript("OnHide", function()
+        if UIDROPDOWNMENU_OPEN_MENU == profileMenu then CloseDropDownMenus() end
+    end)
+    UIDropDownMenu_Initialize(profileMenu, function()
+        for _, character in ipairs(AvailableProfiles()) do
+            local source = character
+            CreateMenuItem(source, source == sourceCharacter, function()
+                sourceCharacter = source
+                RefreshProfileControls()
+            end)
+        end
+    end)
+    chooseProfile:SetScript("OnClick", function(self)
+        ToggleDropDownMenu(1, nil, profileMenu, self, 0, 0)
+    end)
+    copyButton:SetScript("OnClick", function()
+        local source = sourceCharacter and HUDTunerCharacterProfiles[sourceCharacter]
+        if not source or InCombatLockdown() then return end
+
+        CopyProfile(source, db)
+        InitializeGroups()
+        SetGroupUndo()
+        selectedGroupID = nil
+        ApplyPlayerPortrait()
+        ApplyTargetVisibility()
+        UpdateLevelBadgePositions()
+        PositionMinimapButton()
+        UpdateMinimapButton()
+        ApplyQuestTrackerVisibility()
+        if performance then
+            performance:SetScale(db.performanceScale)
+            PositionPerformance()
+            UpdatePerformance()
+        end
+        RefreshAll()
+        SaveCharacterProfile()
+        RefreshProfileControls(L.SettingsCopied:format(sourceCharacter))
+    end)
+
+    RefreshAll = function()
         enabled:SetChecked(db.enabled)
         hidePlayerCheck.Refresh()
         hideQuestTrackerCheck.Refresh()
@@ -1510,6 +2100,7 @@ CreateOptions = function()
         portraitSizeSlider:SetValue(db.playerPortraitSize or 48)
         for _, check in pairs(performanceChecks) do check.Refresh() end
         scaleSlider:SetValue(db.performanceScale)
+        RefreshProfileControls()
         RefreshGroupUI()
     end
     panel:SetScript("OnShow", RefreshAll)
@@ -1519,6 +2110,7 @@ CreateOptions = function()
     panel:Hide()
 end
 controller:RegisterEvent("ADDON_LOADED")
+controller:RegisterEvent("PLAYER_LOGOUT")
 controller:RegisterEvent("PLAYER_LOGIN")
 controller:RegisterEvent("PLAYER_ENTERING_WORLD")
 controller:RegisterEvent("PLAYER_REGEN_DISABLED")
@@ -1529,6 +2121,7 @@ controller:RegisterEvent("UNIT_LEVEL")
 controller:RegisterEvent("PLAYER_LEVEL_UP")
 controller:SetScript("OnEvent", function(_, event, loaded)
     if event == "ADDON_LOADED" and loaded == addonName then
+        if type(HUDTunerCharacterProfiles) ~= "table" then HUDTunerCharacterProfiles = {} end
         ForeverHoverBarsDB = ForeverHoverBarsDB or {}
         db = ForeverHoverBarsDB
         if type(db.hideBlizzardQuestTracker) ~= "boolean" then
@@ -1562,8 +2155,17 @@ controller:SetScript("OnEvent", function(_, event, loaded)
         for key, value in pairs(hoverValues) do db[key] = value end
         CreateMinimapButton()
     end
+    if event == "PLAYER_LOGOUT" then
+        SaveCharacterProfile()
+        return
+    end
     if event == "PLAYER_LOGIN" then
         CreateMinimapButton()
+        local character, realm = UnitFullName("player")
+        if character then
+            if not realm or realm == "" then realm = GetRealmName() end
+            profileKey = realm and realm ~= "" and character .. "-" .. realm or character
+        end
         CreatePerformance()
         ApplyPlayerPortrait()
         ApplyTargetVisibility()
@@ -1595,6 +2197,11 @@ controller:SetScript("OnEvent", function(_, event, loaded)
     end
     DiscoverBars()
     if event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
+        if panel and panel.RefreshProfileControls then panel.RefreshProfileControls() end
+        if event == "PLAYER_REGEN_DISABLED" and hudEditor and hudEditor:IsShown() then
+            hudEditor:Hide()
+            Notify(L.EditHUDCombatCanceled)
+        end
         local inCombat = event == "PLAYER_REGEN_DISABLED"
         local hoveredGroups = {}
         if inCombat and db.enabled then
@@ -1680,6 +2287,10 @@ SLASH_FOREVERHOVERBARS1 = "/fhb"
 SLASH_FOREVERHOVERBARS2 = "/foreverhud"
 SlashCmdList.FOREVERHOVERBARS = function(message)
     if not db then return end
+    if hudEditor and hudEditor:IsShown() then
+        hudEditor:Hide()
+        return
+    end
     message = (message or ""):lower():match("^%s*(.-)%s*$")
     if message == "level" then
         ToggleLevelMover()
@@ -1705,7 +2316,6 @@ SlashCmdList.FOREVERHOVERBARS = function(message)
         db.enabled = not db.enabled
         Notify(db.enabled and L.HoverEnabled or L.BarsVisible)
     else
-        if not panel then CreateOptions() end
-        panel:SetShown(not panel:IsShown())
+        ToggleOptions()
     end
 end

@@ -2,9 +2,11 @@
 
 HUD Tuner lets you decide what stays on screen in World of Warcraft: Forever.
 
-- Group action bars and choose when each group appears.
+- Name action-bar groups, preview bars in the HUD, and undo moves between groups or group deletions.
 - Replace the default player and target frames with compact class icons.
 - Show FPS and home or world latency in a movable display.
+- Open **Edit HUD** to align the player icon, target icon, and performance display in one editor.
+- Copy settings from another character under **Profiles**. Log in and out on the source character first.
 - Hide or restore Blizzard's objective tracker from the **Quests** tab.
 
 ## Compatibility and installation
