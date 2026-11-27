@@ -3,9 +3,10 @@
 HUD Tuner lets you decide what stays on screen in World of Warcraft: Forever.
 
 - Name action-bar groups, preview bars in the HUD, and undo moves between groups or group deletions.
-- Replace the default player and target frames with compact class icons.
+- Replace the player and target frames independently with compact, clickable bars. Choose their size, visibility, and text format. Color health by class, unit reaction, or remaining health, or pick a fixed color.
+- Preview each bar in **Unit frames**, then click it to edit. Try different target and casting examples before placing a frame in the HUD.
 - Show FPS and home or world latency in a movable display.
-- Open **Edit HUD** to align the player icon, target icon, and performance display in one editor.
+- Open **Edit HUD** to place the unit frames and performance display with to-scale previews and alignment guides.
 - Copy settings from another character under **Profiles**. Log in and out on the source character first.
 - Hide or restore Blizzard's objective tracker from the **Quests** tab.
 

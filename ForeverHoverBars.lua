@@ -1,5 +1,6 @@
 local addonName, addon = ...
 local L = addon.L
+local unitFrames = addon.UnitFrames
 local addonTitle = "HUD Tuner"
 local technicalCyan = { 0, 0xB4 / 255, 0xD8 / 255, 1 }
 
@@ -34,419 +35,8 @@ for index = 1, 8 do
 end
 labels[9], labels[10], labels[11], labels[12] = L.PetBar, L.StanceBar, L.BagsBar, L.MicroMenu
 local db
-local playerPortrait
-local targetPortrait
-local targetPortraitWatching
 local minimapButton
-local targetFrameHooked
-local wasEditing
-local playerMover
-local targetMover
-local levelMover
-local ApplyPlayerPortrait
-local targetMouseStates = {}
-local function SetTargetFrameMouse(frame, enabled)
-    if not frame then return end
-    if targetMouseStates[frame] == nil and frame.IsMouseEnabled then
-        targetMouseStates[frame] = frame:IsMouseEnabled()
-    end
-    if enabled then
-        if targetMouseStates[frame] and frame.EnableMouse then frame:EnableMouse(true) end
-    elseif frame.EnableMouse then
-        frame:EnableMouse(false)
-    end
-    for _, child in ipairs({ frame:GetChildren() }) do
-        SetTargetFrameMouse(child, enabled)
-    end
-end
-local function SetClassIcon(texture, unit)
-    local _, class = UnitClass(unit)
-    local coords = class and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class]
-    if coords then
-        texture:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
-        texture:SetTexCoord(unpack(coords))
-    elseif class and texture.SetAtlas then
-        texture:SetAtlas("classicon-" .. class:lower(), true)
-    else
-        texture:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-        texture:SetTexCoord(0, 1, 0, 1)
-    end
-end
-local function StyleIconText(text, size)
-    text:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", size, "")
-    text:SetTextColor(0.78, 0.78, 0.78)
-    text:SetShadowColor(0, 0, 0, 0)
-end
 
-local function PositionLevelBadge(button)
-    if not button or not button.levelBadge then return end
-    button.levelBadge:ClearAllPoints()
-    button.levelBadge:SetPoint("BOTTOM", button, "BOTTOM",
-        db and db.levelOffsetX or 0, db and db.levelOffsetY or -3)
-end
-local function UpdatePortraitLevel(button, unit)
-    if not button then return end
-    if not button.levelBadge then
-        local badge = CreateFrame("Frame", nil, button)
-        badge:SetFrameLevel(button:GetFrameLevel() + 5)
-        badge:SetHeight(15)
-        local bg = badge:CreateTexture(nil, "BACKGROUND")
-        bg:SetAllPoints()
-        bg:SetColorTexture(0.065, 0.065, 0.065, 0.75)
-        local text = badge:CreateFontString(nil, "OVERLAY")
-        text:SetPoint("CENTER")
-        button.levelBadge = badge
-        button.levelText = text
-    end
-    PositionLevelBadge(button)
-    local level = UnitLevel and UnitLevel(unit)
-    local label = (not level or level < 1) and "??" or tostring(level)
-    local fontSize = math.max(9, math.min(13, button:GetWidth() * 0.25))
-    StyleIconText(button.levelText, fontSize)
-    button.levelText:SetText(label)
-    button.levelBadge:SetWidth(math.max(21, button.levelText:GetStringWidth() + 8))
-    button.levelBadge:Show()
-end
-local function UpdateLevelBadgePositions()
-    PositionLevelBadge(playerPortrait)
-    PositionLevelBadge(targetPortrait)
-end
-local function ToggleLevelMover()
-    if InCombatLockdown() then
-        Notify(L.MoveLevelOutOfCombat)
-        return
-    end
-    if levelMover and levelMover:IsShown() then
-        levelMover:StopMovingOrSizing()
-        levelMover.dragging = false
-        local icon = levelMover.anchorIcon
-        if icon and icon.levelBadge then
-            local mx, my = levelMover:GetCenter()
-            local ix, iy = icon:GetCenter()
-            local moverScale = levelMover:GetEffectiveScale() / UIParent:GetEffectiveScale()
-            local iconScale = icon:GetEffectiveScale() / UIParent:GetEffectiveScale()
-            if mx and my and ix and iy then
-                db.levelOffsetX = mx * moverScale - ix * iconScale
-                db.levelOffsetY = my * moverScale
-                    - (iy - icon:GetHeight() / 2) * iconScale
-            end
-        end
-        levelMover:Hide()
-        UpdateLevelBadgePositions()
-        Notify(L.LevelPositionSaved)
-        return
-    end
-    local icon = playerPortrait and playerPortrait:IsShown() and playerPortrait
-        or targetPortrait and targetPortrait:IsShown() and targetPortrait
-    if not icon or not icon.levelBadge then
-        Notify(L.EnableAnIconFirst)
-        return
-    end
-    if not levelMover then
-        levelMover = CreateFrame("Frame", "ForeverHoverBarsLevelMover", UIParent)
-        levelMover:SetFrameStrata("DIALOG")
-        levelMover:EnableMouse(true)
-        levelMover:SetMovable(true)
-        levelMover:SetClampedToScreen(true)
-        levelMover:RegisterForDrag("LeftButton")
-        local bg = levelMover:CreateTexture(nil, "BACKGROUND")
-        bg:SetAllPoints()
-        bg:SetColorTexture(0.075, 0.28, 0.34, 0.62)
-        local label = levelMover:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        label:SetPoint("CENTER")
-        label:SetText(L.LevelDrag)
-        label:SetTextColor(unpack(technicalCyan))
-        levelMover:SetScript("OnDragStart", function(self)
-            if not InCombatLockdown() then
-                self:StartMoving()
-                self.dragging = true
-            end
-        end)
-        levelMover:SetScript("OnDragStop", function(self)
-            self:StopMovingOrSizing()
-            self.dragging = false
-        end)
-        levelMover:SetScript("OnMouseUp", function(_, button)
-            if button == "RightButton" then ToggleLevelMover() end
-        end)
-        levelMover:SetScript("OnUpdate", function(self)
-            local anchor = self.anchorIcon
-            if not self.dragging or not anchor then return end
-            local mx, my = self:GetCenter()
-            local ix, iy = anchor:GetCenter()
-            local moverScale = self:GetEffectiveScale() / UIParent:GetEffectiveScale()
-            local iconScale = anchor:GetEffectiveScale() / UIParent:GetEffectiveScale()
-            if mx and my and ix and iy then
-                db.levelOffsetX = mx * moverScale - ix * iconScale
-                db.levelOffsetY = my * moverScale
-                    - (iy - anchor:GetHeight() / 2) * iconScale
-                UpdateLevelBadgePositions()
-            end
-        end)
-    end
-    levelMover.anchorIcon = icon
-    levelMover:ClearAllPoints()
-    levelMover:SetSize(58, 22)
-    levelMover:SetPoint("CENTER", icon.levelBadge, "CENTER")
-    levelMover:Show()
-    Notify(L.MoveAndSaveLevel)
-end
-local function PositionPlayerPortrait(x, y)
-    if not playerPortrait then return end
-    playerPortrait:ClearAllPoints()
-    if x and y then
-        playerPortrait:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
-    else
-        playerPortrait:SetPoint("CENTER", PlayerFrame, "CENTER")
-    end
-end
-local function PositionTargetPortrait(x, y)
-    if not targetPortrait then return end
-    targetPortrait:ClearAllPoints()
-    if x and y then
-        targetPortrait:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
-    else
-        targetPortrait:SetPoint("CENTER", TargetFrame, "CENTER")
-    end
-end
-local function SavePlayerMoverPosition()
-    if not playerMover or not playerMover:IsShown() then return end
-    playerMover:StopMovingOrSizing()
-    playerMover.dragging = false
-    local x, y = playerMover:GetCenter()
-    if x and y then
-        local scale = playerMover:GetEffectiveScale() / UIParent:GetEffectiveScale()
-        db.playerPortraitX, db.playerPortraitY = x * scale, y * scale
-    end
-    PositionPlayerPortrait(db.playerPortraitX, db.playerPortraitY)
-    playerMover:Hide()
-    if playerMover.controls then playerMover.controls:Hide() end
-    Notify(L.PlayerIconPositionSaved)
-end
-local function TogglePlayerMover()
-    if InCombatLockdown() then
-        Notify(L.MovePlayerOutOfCombat)
-        return
-    end
-    db.hidePlayerFrame = true
-    ApplyPlayerPortrait()
-    if playerMover and playerMover:IsShown() then
-        SavePlayerMoverPosition()
-        return
-    end
-    if not playerMover then
-        playerMover = CreateFrame("Frame", "ForeverHoverBarsPlayerMover", UIParent)
-        playerMover:SetFrameStrata("DIALOG")
-        playerMover:EnableMouse(true)
-        playerMover:SetMovable(true)
-        playerMover:SetClampedToScreen(true)
-        playerMover:RegisterForDrag("LeftButton")
-        local bg = playerMover:CreateTexture(nil, "BACKGROUND")
-        bg:SetAllPoints()
-        bg:SetColorTexture(0.075, 0.28, 0.34, 0.55)
-        local label = playerMover:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        label:SetPoint("CENTER")
-        label:SetText(L.DragToMove)
-        label:SetTextColor(unpack(technicalCyan))
-        playerMover:SetScript("OnDragStart", function(self)
-            if not InCombatLockdown() then
-                self:StartMoving()
-                self.dragging = true
-            end
-        end)
-        playerMover:SetScript("OnDragStop", function(self)
-            self:StopMovingOrSizing()
-            self.dragging = false
-            local x, y = self:GetCenter()
-            if x and y then
-                local scale = self:GetEffectiveScale() / UIParent:GetEffectiveScale()
-                db.playerPortraitX, db.playerPortraitY = x * scale, y * scale
-            end
-            PositionPlayerPortrait(db.playerPortraitX, db.playerPortraitY)
-        end)
-        playerMover:SetScript("OnUpdate", function(self)
-            if self.dragging then
-                local x, y = self:GetCenter()
-                if x and y then
-                    local scale = self:GetEffectiveScale() / UIParent:GetEffectiveScale()
-                    PositionPlayerPortrait(x * scale, y * scale)
-                end
-            end
-        end)
-
-        local controls = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-        controls:SetSize(224, 166)
-        controls:SetPoint("TOP", UIParent, "TOP", 0, -110)
-        controls:SetFrameStrata("DIALOG")
-        controls:SetFrameLevel(playerMover:GetFrameLevel() + 2)
-        controls:SetBackdrop({
-            bgFile = "Interface/Tooltips/UI-Tooltip-Background",
-            edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-            tile = true, tileSize = 16, edgeSize = 12,
-            insets = { left = 3, right = 3, top = 3, bottom = 3 },
-        })
-        controls:SetBackdropColor(0.04, 0.06, 0.10, 0.96)
-        controls:EnableMouse(true)
-        local title = controls:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-        title:SetPoint("TOP", 0, -12)
-        title:SetText(L.MovePlayerIcon)
-        title:SetTextColor(unpack(technicalCyan))
-        local hint = controls:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        hint:SetPoint("TOP", title, "BOTTOM", 0, -4)
-        hint:SetText(L.DragOrArrows)
-
-        local step = 1
-        local stepButton = CreateFrame("Button", nil, controls, "UIPanelButtonTemplate")
-        stepButton:SetSize(58, 24)
-        stepButton:SetPoint("BOTTOMLEFT", 12, 12)
-        stepButton:SetText(L.Step:format(1))
-        stepButton:SetScript("OnClick", function(self)
-            step = step == 1 and 5 or (step == 5 and 15 or 1)
-            self:SetText(L.Step:format(step))
-        end)
-        local function Nudge(dx, dy)
-            local x, y = playerMover:GetCenter()
-            if not x or not y then return end
-            local scale = playerMover:GetEffectiveScale() / UIParent:GetEffectiveScale()
-            x, y = x * scale + dx * step, y * scale + dy * step
-            playerMover:ClearAllPoints()
-            playerMover:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
-            PositionPlayerPortrait(x, y)
-        end
-        local function AddNudgeButton(text, x, y, dx, dy)
-            local button = CreateFrame("Button", nil, controls, "UIPanelButtonTemplate")
-            button:SetSize(32, 28)
-            button:SetPoint("BOTTOM", controls, "BOTTOM", x, y)
-            button:SetText(text)
-            button:SetScript("OnClick", function() Nudge(dx, dy) end)
-        end
-        AddNudgeButton("↑", 0, 78, 0, 1)
-        AddNudgeButton("←", -34, 49, -1, 0)
-        AddNudgeButton("↓", 0, 49, 0, -1)
-        AddNudgeButton("→", 34, 49, 1, 0)
-        local centerButton = CreateFrame("Button", nil, controls, "UIPanelButtonTemplate")
-        centerButton:SetSize(58, 24)
-        centerButton:SetPoint("BOTTOMLEFT", stepButton, "BOTTOMRIGHT", 6, 0)
-        centerButton:SetText(L.Center)
-        centerButton:SetScript("OnClick", function()
-            db.playerPortraitX, db.playerPortraitY = nil, nil
-            PositionPlayerPortrait()
-            local x, y = playerPortrait:GetCenter()
-            if x and y then
-                local scale = playerPortrait:GetEffectiveScale() / UIParent:GetEffectiveScale()
-                playerMover:ClearAllPoints()
-                playerMover:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x * scale, y * scale)
-            end
-        end)
-        local saveButton = CreateFrame("Button", nil, controls, "UIPanelButtonTemplate")
-        saveButton:SetSize(74, 24)
-        saveButton:SetPoint("BOTTOMRIGHT", -12, 12)
-        saveButton:SetText(L.Save)
-        saveButton:SetScript("OnClick", SavePlayerMoverPosition)
-        playerMover.controls = controls
-    end
-    local x, y = playerPortrait:GetCenter()
-    local scale = playerPortrait:GetEffectiveScale() / UIParent:GetEffectiveScale()
-    playerMover:ClearAllPoints()
-    playerMover:SetSize(math.max(96, playerPortrait:GetWidth() + 24), math.max(96, playerPortrait:GetHeight() + 24))
-    if x and y then
-        playerMover:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x * scale, y * scale)
-    else
-        playerMover:SetPoint("CENTER", playerPortrait, "CENTER")
-    end
-    playerMover:Show()
-    playerMover.controls:Show()
-    Notify(L.MoveAndSavePlayer)
-end
-ApplyPlayerPortrait = function()
-    if not PlayerFrame then return end
-    if InCombatLockdown() then return end
-    if not playerPortrait then
-        playerPortrait = CreateFrame("Button", "ForeverHoverBarsPlayerPortrait", UIParent,
-            "SecureUnitButtonTemplate")
-        playerPortrait:SetFrameStrata("HIGH")
-        playerPortrait:SetPoint("CENTER", PlayerFrame, "CENTER")
-        playerPortrait:RegisterForClicks("AnyUp")
-        playerPortrait:SetAttribute("unit", "player")
-        playerPortrait:SetAttribute("*type1", "target")
-        playerPortrait:SetAttribute("*type2", "togglemenu")
-        playerPortrait.texture = playerPortrait:CreateTexture(nil, "ARTWORK")
-        playerPortrait.texture:SetAllPoints()
-    end
-    local size = db.playerPortraitSize or 48
-    playerPortrait:SetSize(size, size)
-    SetClassIcon(playerPortrait.texture, "player")
-    UpdatePortraitLevel(playerPortrait, "player")
-    PositionPlayerPortrait(db.playerPortraitX, db.playerPortraitY)
-    if db.hidePlayerFrame then
-        playerPortrait:Show()
-    else
-        playerPortrait:Hide()
-    end
-    if db.hidePlayerFrame then
-        PlayerFrame:Hide()
-    else
-        PlayerFrame:Show()
-    end
-end
-local function ApplyTargetVisibility()
-    if not TargetFrame or not db or InCombatLockdown() then return end
-    if not targetFrameHooked then
-        TargetFrame:HookScript("OnShow", function(frame)
-            local editing = EditModeManagerFrame and EditModeManagerFrame:IsShown()
-            if not db or not db.hideTargetFrame or editing then return end
-            frame:SetAlpha(0)
-            if not InCombatLockdown() then frame:Hide() end
-        end)
-        targetFrameHooked = true
-    end
-    if db.hideTargetFrame then
-        if not targetPortrait then
-            targetPortrait = CreateFrame("Button", "ForeverHoverBarsTargetPortrait", UIParent,
-                "SecureUnitButtonTemplate")
-            targetPortrait:SetFrameStrata("HIGH")
-            targetPortrait:SetPoint("CENTER", TargetFrame, "CENTER")
-            targetPortrait:RegisterForClicks("AnyUp")
-            targetPortrait:SetAttribute("unit", "target")
-            targetPortrait:SetAttribute("*type1", "target")
-            targetPortrait:SetAttribute("*type2", "togglemenu")
-            targetPortrait.texture = targetPortrait:CreateTexture(nil, "ARTWORK")
-            targetPortrait.texture:SetAllPoints()
-        end
-        local size = db.playerPortraitSize or 48
-        targetPortrait:SetSize(size, size)
-        SetClassIcon(targetPortrait.texture, "target")
-        UpdatePortraitLevel(targetPortrait, "target")
-        PositionTargetPortrait(db.targetPortraitX, db.targetPortraitY)
-        local editing = EditModeManagerFrame and EditModeManagerFrame:IsShown()
-        if editing then
-            if targetPortraitWatching and UnregisterUnitWatch then
-                UnregisterUnitWatch(targetPortrait)
-                targetPortraitWatching = false
-            end
-            TargetFrame:SetAlpha(1)
-            TargetFrame:Show()
-            SetTargetFrameMouse(TargetFrame, true)
-            targetPortrait:Hide()
-        else
-            if not targetPortraitWatching and RegisterUnitWatch then
-                RegisterUnitWatch(targetPortrait)
-                targetPortraitWatching = true
-            end
-            TargetFrame:Hide()
-            SetTargetFrameMouse(TargetFrame, false)
-        end
-    else
-        if targetPortraitWatching and UnregisterUnitWatch then
-            UnregisterUnitWatch(targetPortrait)
-            targetPortraitWatching = false
-        end
-        if targetPortrait then targetPortrait:Hide() end
-        TargetFrame:SetAlpha(1)
-        TargetFrame:Show()
-        SetTargetFrameMouse(TargetFrame, true)
-    end
-end
 local function PositionMinimapButton()
     if not minimapButton or not Minimap then return end
     local angle = math.rad(db.minimapButtonAngle or 225)
@@ -522,171 +112,6 @@ local function CreateMinimapButton()
     end)
     PositionMinimapButton()
     UpdateMinimapButton()
-end
-local function SaveTargetMoverPosition()
-    if not targetMover or not targetMover:IsShown() then return end
-    targetMover:StopMovingOrSizing()
-    targetMover.dragging = false
-    local x, y = targetMover:GetCenter()
-    if x and y then
-        local scale = targetMover:GetEffectiveScale() / UIParent:GetEffectiveScale()
-        db.targetPortraitX, db.targetPortraitY = x * scale, y * scale
-    end
-    PositionTargetPortrait(db.targetPortraitX, db.targetPortraitY)
-    targetMover:Hide()
-    if targetMover.controls then targetMover.controls:Hide() end
-    ApplyTargetVisibility()
-    Notify(L.TargetIconPositionSaved)
-end
-local function ToggleTargetMover()
-    if InCombatLockdown() then
-        Notify(L.MoveTargetOutOfCombat)
-        return
-    end
-    if not TargetFrame then
-        Notify(L.TargetFrameUnavailable)
-        return
-    end
-    if EditModeManagerFrame and EditModeManagerFrame:IsShown() then
-        Notify(L.ExitEditMode)
-        return
-    end
-    db.hideTargetFrame = true
-    ApplyTargetVisibility()
-    if targetMover and targetMover:IsShown() then
-        SaveTargetMoverPosition()
-        return
-    end
-    if not targetMover then
-        targetMover = CreateFrame("Frame", "ForeverHoverBarsTargetMover", UIParent)
-        targetMover:SetFrameStrata("DIALOG")
-        targetMover:EnableMouse(true)
-        targetMover:SetMovable(true)
-        targetMover:SetClampedToScreen(true)
-        targetMover:RegisterForDrag("LeftButton")
-        local bg = targetMover:CreateTexture(nil, "BACKGROUND")
-        bg:SetAllPoints()
-        bg:SetColorTexture(0.075, 0.28, 0.34, 0.55)
-        local label = targetMover:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        label:SetPoint("CENTER")
-        label:SetText(L.DragToMove)
-        label:SetTextColor(unpack(technicalCyan))
-        targetMover:SetScript("OnDragStart", function(self)
-            if not InCombatLockdown() then
-                self:StartMoving()
-                self.dragging = true
-            end
-        end)
-        targetMover:SetScript("OnDragStop", function(self)
-            self:StopMovingOrSizing()
-            self.dragging = false
-            local x, y = self:GetCenter()
-            if x and y then
-                local scale = self:GetEffectiveScale() / UIParent:GetEffectiveScale()
-                db.targetPortraitX, db.targetPortraitY = x * scale, y * scale
-            end
-            PositionTargetPortrait(db.targetPortraitX, db.targetPortraitY)
-        end)
-        targetMover:SetScript("OnUpdate", function(self)
-            if self.dragging then
-                local x, y = self:GetCenter()
-                if x and y then
-                    local scale = self:GetEffectiveScale() / UIParent:GetEffectiveScale()
-                    PositionTargetPortrait(x * scale, y * scale)
-                end
-            end
-        end)
-
-        local controls = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-        controls:SetSize(224, 166)
-        controls:SetPoint("TOP", UIParent, "TOP", 0, -110)
-        controls:SetFrameStrata("DIALOG")
-        controls:SetFrameLevel(targetMover:GetFrameLevel() + 2)
-        controls:SetBackdrop({
-            bgFile = "Interface/Tooltips/UI-Tooltip-Background",
-            edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-            tile = true, tileSize = 16, edgeSize = 12,
-            insets = { left = 3, right = 3, top = 3, bottom = 3 },
-        })
-        controls:SetBackdropColor(0.04, 0.06, 0.10, 0.96)
-        controls:EnableMouse(true)
-        local title = controls:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-        title:SetPoint("TOP", 0, -12)
-        title:SetText(L.MoveTargetIcon)
-        title:SetTextColor(unpack(technicalCyan))
-        local hint = controls:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        hint:SetPoint("TOP", title, "BOTTOM", 0, -4)
-        hint:SetText(L.DragOrArrows)
-        local step = 1
-        local stepButton = CreateFrame("Button", nil, controls, "UIPanelButtonTemplate")
-        stepButton:SetSize(58, 24)
-        stepButton:SetPoint("BOTTOMLEFT", 12, 12)
-        stepButton:SetText(L.Step:format(1))
-        stepButton:SetScript("OnClick", function(self)
-            step = step == 1 and 5 or (step == 5 and 15 or 1)
-            self:SetText(L.Step:format(step))
-        end)
-        local function Nudge(dx, dy)
-            local x, y = targetMover:GetCenter()
-            if not x or not y then return end
-            local scale = targetMover:GetEffectiveScale() / UIParent:GetEffectiveScale()
-            x, y = x * scale + dx * step, y * scale + dy * step
-            targetMover:ClearAllPoints()
-            targetMover:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
-            PositionTargetPortrait(x, y)
-        end
-        local function AddNudgeButton(text, x, y, dx, dy)
-            local button = CreateFrame("Button", nil, controls, "UIPanelButtonTemplate")
-            button:SetSize(32, 28)
-            button:SetPoint("BOTTOM", controls, "BOTTOM", x, y)
-            button:SetText(text)
-            button:SetScript("OnClick", function() Nudge(dx, dy) end)
-        end
-        AddNudgeButton("↑", 0, 78, 0, 1)
-        AddNudgeButton("←", -34, 49, -1, 0)
-        AddNudgeButton("↓", 0, 49, 0, -1)
-        AddNudgeButton("→", 34, 49, 1, 0)
-        local centerButton = CreateFrame("Button", nil, controls, "UIPanelButtonTemplate")
-        centerButton:SetSize(58, 24)
-        centerButton:SetPoint("BOTTOMLEFT", stepButton, "BOTTOMRIGHT", 6, 0)
-        centerButton:SetText(L.Center)
-        centerButton:SetScript("OnClick", function()
-            db.targetPortraitX, db.targetPortraitY = nil, nil
-            PositionTargetPortrait()
-            local x, y = targetPortrait:GetCenter()
-            if x and y then
-                local scale = targetPortrait:GetEffectiveScale() / UIParent:GetEffectiveScale()
-                targetMover:ClearAllPoints()
-                targetMover:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x * scale, y * scale)
-            end
-        end)
-        local saveButton = CreateFrame("Button", nil, controls, "UIPanelButtonTemplate")
-        saveButton:SetSize(74, 24)
-        saveButton:SetPoint("BOTTOMRIGHT", -12, 12)
-        saveButton:SetText(L.Save)
-        saveButton:SetScript("OnClick", SaveTargetMoverPosition)
-        targetMover.controls = controls
-    end
-    if targetPortraitWatching and UnregisterUnitWatch then
-        UnregisterUnitWatch(targetPortrait)
-        targetPortraitWatching = false
-    end
-    targetPortrait:Show()
-    local x, y = targetPortrait:GetCenter()
-    local scale = targetPortrait:GetEffectiveScale() / UIParent:GetEffectiveScale()
-    targetMover:ClearAllPoints()
-    targetMover:SetSize(math.max(96, targetPortrait:GetWidth() + 24),
-        math.max(96, targetPortrait:GetHeight() + 24))
-    if db.targetPortraitX and db.targetPortraitY then
-        targetMover:SetPoint("CENTER", UIParent, "BOTTOMLEFT", db.targetPortraitX, db.targetPortraitY)
-    elseif x and y then
-        targetMover:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x * scale, y * scale)
-    else
-        targetMover:SetPoint("CENTER", TargetFrame, "CENTER")
-    end
-    targetMover:Show()
-    targetMover.controls:Show()
-    Notify(L.MoveAndSaveTarget)
 end
 local performance, performanceMoving
 local performanceMetrics = { "showFPS", "showHome", "showWorld" }
@@ -897,12 +322,14 @@ local function GroupPolicyText(policyKey)
 end
 local profileTables = { "groups", "groupNames", "barGroups" }
 local profileSettings = {
-    "enabled", "hidePlayerFrame", "hideTargetFrame", "playerPortraitSize",
-    "playerPortraitX", "playerPortraitY", "targetPortraitX", "targetPortraitY",
-    "levelOffsetX", "levelOffsetY", "showMinimapButton", "minimapButtonAngle",
+    "enabled", "showMinimapButton", "minimapButtonAngle",
+    "hideNativePlayerFrame", "hideNativeTargetFrame",
+    "showMinimalPlayerFrame", "showMinimalTargetFrame",
+    "minimalPlayerX", "minimalPlayerY", "minimalTargetX", "minimalTargetY",
     "hideBlizzardQuestTracker", "showPerformance", "showFPS", "showHome",
     "showWorld", "performanceScale", "performanceX", "performanceY",
 }
+for _, key in ipairs(unitFrames.profileSettings) do table.insert(profileSettings, key) end
 local profileKey
 
 local function CopyMap(source)
@@ -922,6 +349,72 @@ end
 local function SaveCharacterProfile()
     if db and profileKey then
         HUDTunerCharacterProfiles[profileKey] = CopyProfile(db, {})
+    end
+end
+
+local mutedUnitFrames = {}
+local unitFrameAlphaHooks = {}
+local unitFramesEditModeHooked
+local unitFrameAppearancePending
+
+local function KeepUnitFrameMuted(frame)
+    local state = mutedUnitFrames[frame]
+    if not state or state.applying then return end
+
+    state.alpha = frame:GetAlpha()
+    state.applying = true
+    frame:SetAlpha(0)
+    state.applying = false
+end
+
+local function SetNativeUnitFrameHidden(frame, hidden)
+    if not frame then return end
+    local state = mutedUnitFrames[frame]
+    if hidden and not state then
+        if not unitFrameAlphaHooks[frame] then
+            hooksecurefunc(frame, "SetAlpha", KeepUnitFrameMuted)
+            unitFrameAlphaHooks[frame] = true
+        end
+        mutedUnitFrames[frame] = {}
+        KeepUnitFrameMuted(frame)
+    elseif not hidden and state then
+        mutedUnitFrames[frame] = nil
+        frame:SetAlpha(state.alpha)
+    end
+end
+
+local function ApplyNativeUnitFrameOptions(_, appearanceChanged)
+    if not db then return end
+    local editMode = EditModeManagerFrame
+    if editMode and not unitFramesEditModeHooked
+        and (db.hideNativePlayerFrame or db.hideNativeTargetFrame
+            or db.showMinimalPlayerFrame or db.showMinimalTargetFrame) then
+        unitFramesEditModeHooked = true
+        editMode:HookScript("OnShow", ApplyNativeUnitFrameOptions)
+        editMode:HookScript("OnHide", ApplyNativeUnitFrameOptions)
+    end
+
+    local editing = editMode and editMode:IsShown()
+    local inCombat = InCombatLockdown()
+    unitFrameAppearancePending = inCombat and (unitFrameAppearancePending or appearanceChanged == true)
+    unitFrames.Apply(db, editing)
+    SetNativeUnitFrameHidden(PlayerFrame,
+        (db.hideNativePlayerFrame == true or unitFrames.IsActive("player")) and not editing)
+    SetNativeUnitFrameHidden(TargetFrame,
+        (db.hideNativeTargetFrame == true or unitFrames.IsActive("target")) and not editing)
+    if panel and panel.unitFramesStatus then
+        local pending = unitFrameAppearancePending or (inCombat and (
+            (db.showMinimalPlayerFrame == true) ~= unitFrames.IsActive("player")
+            or (db.showMinimalTargetFrame == true) ~= unitFrames.IsActive("target"))) or false
+        panel.unitFramesStatus:SetShown(pending)
+        local action = panel.unitFramePendingAction
+        if pending then
+            panel.unitFramesStatus:SetText(action and L.UnitFramePendingAction:format(action) or L.AfterCombat)
+        else
+            panel.unitFramePendingAction = nil
+        end
+        if panel.RefreshUnitFrameStates then panel.RefreshUnitFrameStates() end
+        if panel.RefreshUnitFramePreview then panel.RefreshUnitFramePreview() end
     end
 end
 
@@ -1123,28 +616,19 @@ CreateOptions = function()
     hudEditor:EnableMouse(false)
     hudEditor:Hide()
 
-    local function MakeGuide(opacity)
+    local function MakeGuide()
         local line = hudEditor:CreateTexture(nil, "BACKGROUND")
-        line:SetColorTexture(technicalCyan[1], technicalCyan[2], technicalCyan[3], opacity)
+        line:SetColorTexture(technicalCyan[1], technicalCyan[2], technicalCyan[3], 0.66)
+        line:SetAlpha(0.42)
         return line
     end
-    local centerVertical, centerHorizontal = MakeGuide(0.28), MakeGuide(0.28)
+    local centerVertical, centerHorizontal = MakeGuide(), MakeGuide()
     centerVertical:SetWidth(1)
     centerVertical:SetPoint("TOP")
     centerVertical:SetPoint("BOTTOM")
     centerHorizontal:SetHeight(1)
     centerHorizontal:SetPoint("LEFT")
     centerHorizontal:SetPoint("RIGHT")
-
-    local snapVertical, snapHorizontal = MakeGuide(0.66), MakeGuide(0.66)
-    snapVertical:SetWidth(1)
-    snapHorizontal:SetHeight(1)
-
-    local function HideSnapGuides()
-        snapVertical:Hide()
-        snapHorizontal:Hide()
-    end
-    HideSnapGuides()
 
     local function CenterInParent(frame)
         if not frame then return end
@@ -1154,54 +638,10 @@ CreateOptions = function()
         return x * scale, y * scale
     end
 
-    local hiddenOriginals = {}
-    local alphaHooks = {}
-
-    local function KeepOriginalHidden(frame)
-        local original = hiddenOriginals[frame]
-        if not original or original.settingAlpha then return end
-
-        -- Preserve changes made by Blizzard or another addon while the editor is open.
-        original.alpha = frame:GetAlpha()
-        original.settingAlpha = true
-        frame:SetAlpha(0)
-        original.settingAlpha = nil
-    end
-
-    local function HideLayoutOriginal(frame)
-        if not frame or hiddenOriginals[frame] then return end
-        if not alphaHooks[frame] then
-            hooksecurefunc(frame, "SetAlpha", KeepOriginalHidden)
-            alphaHooks[frame] = true
-        end
-        hiddenOriginals[frame] = {}
-        KeepOriginalHidden(frame)
-    end
-
-    local function RestoreLayoutOriginals()
-        for frame, original in pairs(hiddenOriginals) do
-            hiddenOriginals[frame] = nil
-            frame:SetAlpha(original.alpha)
-        end
-    end
-
-    local movers = {}
-    local function SnapPosition(mover, x, y)
-        local snapX, snapY
-        local xDistance, yDistance = 10, 10
-        local function Consider(otherX, otherY)
-            if otherX and math.abs(x - otherX) < xDistance then
-                snapX, xDistance = otherX, math.abs(x - otherX)
-            end
-            if otherY and math.abs(y - otherY) < yDistance then
-                snapY, yDistance = otherY, math.abs(y - otherY)
-            end
-        end
-        Consider(UIParent:GetWidth() / 2, UIParent:GetHeight() / 2)
-        for _, other in ipairs(movers) do
-            if other ~= mover then Consider(CenterInParent(other)) end
-        end
-        return snapX, snapY
+    local function SnapPosition(x, y)
+        local centerX, centerY = UIParent:GetWidth() / 2, UIParent:GetHeight() / 2
+        return math.abs(x - centerX) < 10 and centerX or nil,
+            math.abs(y - centerY) < 10 and centerY or nil
     end
 
     local function PositionMover(mover, x, y)
@@ -1215,19 +655,9 @@ CreateOptions = function()
     local function ShowSnapGuides(mover)
         local x, y = CenterInParent(mover)
         if not x then return end
-        local snapX, snapY = SnapPosition(mover, x, y)
-        if snapX then
-            snapVertical:ClearAllPoints()
-            snapVertical:SetPoint("TOP", hudEditor, "TOPLEFT", snapX, 0)
-            snapVertical:SetPoint("BOTTOM", hudEditor, "BOTTOMLEFT", snapX, 0)
-        end
-        if snapY then
-            snapHorizontal:ClearAllPoints()
-            snapHorizontal:SetPoint("LEFT", hudEditor, "BOTTOMLEFT", 0, snapY)
-            snapHorizontal:SetPoint("RIGHT", hudEditor, "BOTTOMRIGHT", 0, snapY)
-        end
-        snapVertical:SetShown(snapX ~= nil)
-        snapHorizontal:SetShown(snapY ~= nil)
+        local snapX, snapY = SnapPosition(x, y)
+        centerVertical:SetAlpha(snapX and 1 or 0.42)
+        centerHorizontal:SetAlpha(snapY and 1 or 0.42)
     end
 
     local function StopLayoutDrag(mover, keepPosition)
@@ -1235,11 +665,12 @@ CreateOptions = function()
         mover:StopMovingOrSizing()
         mover:SetScript("OnUpdate", nil)
         mover.dragging = nil
-        HideSnapGuides()
+        centerVertical:SetAlpha(0.42)
+        centerHorizontal:SetAlpha(0.42)
         if not keepPosition then return end
         local x, y = CenterInParent(mover)
         if x then
-            local snapX, snapY = SnapPosition(mover, x, y)
+            local snapX, snapY = SnapPosition(x, y)
             PositionMover(mover, snapX or x, snapY or y)
             mover.changed = true
         end
@@ -1258,43 +689,43 @@ CreateOptions = function()
         return frame
     end
 
-    local function AddLayoutMover(label, xKey, yKey, getFrame, unit)
-        local mover = CreateFrame("Frame", nil, hudEditor, "BackdropTemplate")
-        mover:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-        mover:SetBackdropBorderColor(technicalCyan[1], technicalCyan[2], technicalCyan[3], 0.8)
-        mover:EnableMouse(true)
-        mover:SetMovable(true)
-        mover:SetClampedToScreen(true)
-        mover:RegisterForDrag("LeftButton")
-        mover.xKey, mover.yKey, mover.getFrame, mover.unit = xKey, yKey, getFrame, unit
-        local text = mover:CreateFontString(nil, "OVERLAY")
-        StyleIconText(text, 11)
-        text:SetText(label)
-        text:SetPoint("TOP", mover, "BOTTOM", 0, -4)
-        if unit then
-            mover.icon = mover:CreateTexture(nil, "ARTWORK")
-            mover.icon:SetAllPoints()
-            mover.icon:SetAlpha(0.58)
-        else
-            local sample = mover:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-            sample:SetPoint("CENTER")
-            sample:SetAlpha(0.70)
-            mover.sample = sample
-        end
-        mover:SetScript("OnDragStart", function(self)
-            self:StartMoving()
-            self.dragging = true
-            self:SetScript("OnUpdate", ShowSnapGuides)
-        end)
-        mover:SetScript("OnDragStop", function(self) StopLayoutDrag(self, true) end)
-        movers[#movers + 1] = mover
-    end
+    local mover = CreateFrame("Frame", nil, hudEditor, "BackdropTemplate")
+    mover:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+    mover:SetBackdropBorderColor(technicalCyan[1], technicalCyan[2], technicalCyan[3], 0.8)
+    mover:EnableMouse(true)
+    mover:SetMovable(true)
+    mover:SetClampedToScreen(true)
+    mover:RegisterForDrag("LeftButton")
 
-    AddLayoutMover(L.PlayerLayout, "playerPortraitX", "playerPortraitY",
-        function() return (db.hidePlayerFrame and playerPortrait) or PlayerFrame end, "player")
-    AddLayoutMover(L.TargetLayout, "targetPortraitX", "targetPortraitY",
-        function() return (db.hideTargetFrame and targetPortrait) or TargetFrame end, "target")
-    AddLayoutMover(L.PerformanceLayout, "performanceX", "performanceY", function() return performance end)
+    local moverLabel = mover:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    moverLabel:SetText(L.PerformanceLayout)
+    moverLabel:SetTextColor(0.78, 0.78, 0.78)
+    moverLabel:SetShadowColor(0, 0, 0, 0)
+    moverLabel:SetPoint("TOP", mover, "BOTTOM", 0, -4)
+
+    local sample = mover:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    sample:SetPoint("CENTER")
+    sample:SetAlpha(0.70)
+    local originalPerformanceAlpha
+
+    mover:SetScript("OnDragStart", function(self)
+        self:StartMoving()
+        self.dragging = true
+        self:SetScript("OnUpdate", ShowSnapGuides)
+    end)
+    mover:SetScript("OnDragStop", function(self) StopLayoutDrag(self, true) end)
+
+    local unitMovers = {}
+    local function UnitMover()
+        local preview = CreateFrame("Frame", nil, hudEditor)
+        preview:EnableMouse(true)
+        preview:SetMovable(true)
+        preview:SetClampedToScreen(true)
+        preview:RegisterForDrag("LeftButton")
+        preview:SetScript("OnDragStart", mover:GetScript("OnDragStart"))
+        preview:SetScript("OnDragStop", mover:GetScript("OnDragStop"))
+        return preview
+    end
 
     local editToolbar = LayoutBox(colors.window)
     editToolbar:SetFrameLevel(hudEditor:GetFrameLevel() + 5)
@@ -1330,40 +761,41 @@ CreateOptions = function()
 
     editHud:SetScript("OnClick", function()
         if not CanEditHUD() then return end
-        if (playerMover and playerMover:IsShown()) or (targetMover and targetMover:IsShown())
-            or performanceMoving then
+        if performanceMoving then
             Notify(L.ClosePositionControls)
             return
         end
         local screenWidth, screenHeight = UIParent:GetWidth(), UIParent:GetHeight()
-        local size = db.playerPortraitSize or 48
-        for index, mover in ipairs(movers) do
-            local frame = mover.getFrame()
-            local x, y = db[mover.xKey], db[mover.yKey]
-            if not x or not y then x, y = CenterInParent(frame) end
-            if mover.unit then
-                mover:SetSize(size, size)
-                SetClassIcon(mover.icon, mover.unit)
-                PositionMover(mover, x or screenWidth * (index == 1 and 0.35 or 0.65),
-                    y or screenHeight * 0.45)
-            else
-                local frameScale = frame and frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
-                    or db.performanceScale or 1
-                local previewWidth = (frame and frame:GetWidth() or 58) * frameScale
-                local previewHeight = (frame and frame:GetHeight() or 20) * frameScale
-                mover:SetSize(previewWidth, previewHeight)
-                if frame then
-                    local font, fontSize, flags = frame.label:GetFont()
-                    if font and fontSize then mover.sample:SetFont(font, fontSize * frameScale, flags) end
-                    mover.sample:SetText(frame:IsShown() and frame.label:GetText() or "")
-                else
-                    mover.sample:SetText("")
-                end
-                PositionMover(mover, x or screenWidth / 2, y or screenHeight - 20 - previewHeight / 2)
-            end
-            mover.changed = nil
+        local x, y = db.performanceX, db.performanceY
+        if not x or not y then x, y = CenterInParent(performance) end
+        local scale = performance and performance:GetEffectiveScale() / UIParent:GetEffectiveScale()
+            or db.performanceScale or 1
+        local previewWidth = (performance and performance:GetWidth() or 58) * scale
+        local previewHeight = (performance and performance:GetHeight() or 20) * scale
+        mover:SetSize(previewWidth, previewHeight)
+        if performance then
+            local font, fontSize, flags = performance.label:GetFont()
+            if font and fontSize then sample:SetFont(font, fontSize * scale, flags) end
+            sample:SetText(performance:IsShown() and performance.label:GetText() or "")
+            originalPerformanceAlpha = performance:GetAlpha()
+            performance:SetAlpha(0)
+        else
+            sample:SetText("")
         end
-        for _, mover in ipairs(movers) do HideLayoutOriginal(mover.getFrame()) end
+        PositionMover(mover, x or screenWidth / 2, y or screenHeight - 20 - previewHeight / 2)
+        mover.changed = nil
+        for _, unit in ipairs(unitFrames.units) do
+            if unitFrames.IsActive(unit) then
+                local preview = unitMovers[unit] or UnitMover()
+                unitMovers[unit] = preview
+                unitFrames.BuildPreview(preview, unit, db)
+                local dx, dy = unitFrames.Position(unit, db)
+                PositionMover(preview, screenWidth / 2 + dx, screenHeight / 2 + dy)
+                preview.changed = nil
+                preview:Show()
+            end
+        end
+        unitFrames.SetPreviewing(true)
         panel:Hide()
         hudEditor:Show()
     end)
@@ -1381,23 +813,39 @@ CreateOptions = function()
             hudEditor:Hide()
             return
         end
-        for _, mover in ipairs(movers) do
-            StopLayoutDrag(mover, true)
-            if mover.changed then
-                local x, y = CenterInParent(mover)
-                if x then db[mover.xKey], db[mover.yKey] = x, y end
+        StopLayoutDrag(mover, true)
+        if mover.changed then
+            local x, y = CenterInParent(mover)
+            if x then
+                db.performanceX, db.performanceY = x, y
+                if performance then PositionPerformance() end
             end
         end
-        if movers[1].changed then PositionPlayerPortrait(db.playerPortraitX, db.playerPortraitY) end
-        if movers[2].changed then PositionTargetPortrait(db.targetPortraitX, db.targetPortraitY) end
-        if movers[3].changed and performance then PositionPerformance() end
+        for unit, preview in pairs(unitMovers) do
+            StopLayoutDrag(preview, true)
+            if preview:IsShown() and preview.changed then
+                local x, y = CenterInParent(preview)
+                if x and y then
+                    unitFrames.SavePosition(unit, db, x - UIParent:GetWidth() / 2,
+                        y - UIParent:GetHeight() / 2)
+                end
+            end
+        end
+        ApplyNativeUnitFrameOptions()
         hudEditor:Hide()
     end)
     hudEditor:SetScript("OnHide", function(self)
         if self:IsShown() then self:Hide() end
-        for _, mover in ipairs(movers) do StopLayoutDrag(mover, false) end
-        HideSnapGuides()
-        RestoreLayoutOriginals()
+        StopLayoutDrag(mover, false)
+        for _, preview in pairs(unitMovers) do
+            StopLayoutDrag(preview, false)
+            preview:Hide()
+        end
+        unitFrames.SetPreviewing(false)
+        if performance and originalPerformanceAlpha ~= nil then
+            performance:SetAlpha(originalPerformanceAlpha)
+            originalPerformanceAlpha = nil
+        end
         if not InCombatLockdown() and not (EditModeManagerFrame and EditModeManagerFrame:IsShown()) then
             panel:Show()
         end
@@ -1441,7 +889,8 @@ CreateOptions = function()
 
     local pageOrder = {
         { id = "bars", label = L.BarsAndGroups },
-        { id = "frames", label = L.Frames },
+        { id = "unitFrames", label = L.NativeUnitFrames },
+        { id = "quickAccess", label = L.QuickAccess },
         { id = "quests", label = L.Quests },
         { id = "profiles", label = L.Profiles },
         { id = "performance", label = L.Performance },
@@ -1500,6 +949,7 @@ CreateOptions = function()
         local label = page:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         label:SetPoint("LEFT", check, "RIGHT", 8, 0)
         label:SetText(text)
+        check:SetHitRectInsets(-4, -(label:GetStringWidth() or 0) - 12, -5, -5)
         check:SetScript("OnClick", function(self)
             setValue(self:GetChecked() and true or false)
         end)
@@ -1534,67 +984,608 @@ CreateOptions = function()
         L.GroupsHelp)
 
     local y
-    local framePage = pages.frames
-    y = AddHeading(framePage, 8, L.UnitFrames,
-        L.UnitFramesHelp)
-    local hidePlayerCheck
-    y, hidePlayerCheck = AddCheck(framePage, y, L.ReplacePlayerFrame,
-        function() return db.hidePlayerFrame end, function(value)
-            db.hidePlayerFrame = value
-            ApplyPlayerPortrait()
-        end)
-    panel.hidePlayer = hidePlayerCheck
-    local hideTargetCheck
-    y, hideTargetCheck = AddCheck(framePage, y, L.ReplaceTargetFrame,
-        function() return db.hideTargetFrame end, function(value)
-            db.hideTargetFrame = value
-            ApplyTargetVisibility()
-        end)
-    panel.hideTarget = hideTargetCheck
-    y = AddRowLabel(framePage, y + 8, L.IconSize)
-    local portraitSizeSlider = CreateFrame("Slider", nil, framePage, "OptionsSliderTemplate")
-    portraitSizeSlider:SetPoint("TOPLEFT", 8, -y)
-    portraitSizeSlider:SetWidth(math.max(220, math.min(360, content:GetWidth() - 70)))
-    portraitSizeSlider:SetMinMaxValues(24, 120)
-    portraitSizeSlider:SetValueStep(4)
-    portraitSizeSlider:SetObeyStepOnDrag(true)
-    local portraitSizeLabel = framePage:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    portraitSizeLabel:SetPoint("LEFT", portraitSizeSlider, "RIGHT", 12, 0)
-    portraitSizeLabel:SetTextColor(unpack(colors.accent))
-    portraitSizeSlider:SetScript("OnValueChanged", function(_, value)
-        db.playerPortraitSize = math.floor(value / 4 + 0.5) * 4
-        ApplyPlayerPortrait()
-        ApplyTargetVisibility()
-        portraitSizeLabel:SetText(db.playerPortraitSize .. " px")
-    end)
-    panel.portraitSize = portraitSizeSlider
-    y = y + 64
-    local movePlayerPortrait = AddButton(framePage, L.MovePlayerIcon)
-    movePlayerPortrait:SetSize(230, 28)
-    movePlayerPortrait:SetPoint("TOPLEFT", 8, -y)
-    movePlayerPortrait:SetScript("OnClick", function()
-        panel:Hide()
-        TogglePlayerMover()
-    end)
-    y = y + 38
-    local moveTargetPortrait = AddButton(framePage, L.MoveTargetIcon)
-    moveTargetPortrait:SetSize(230, 28)
-    moveTargetPortrait:SetPoint("TOPLEFT", 8, -y)
-    moveTargetPortrait:SetScript("OnClick", function()
-        panel:Hide()
-        ToggleTargetMover()
-    end)
-    y = y + 42
-    y = AddHeading(framePage, y + 8, L.QuickAccess,
-        L.QuickAccessHelp)
+    local quickAccessPage = pages.quickAccess
+    y = AddHeading(quickAccessPage, 8, L.QuickAccess, L.QuickAccessHelp)
     local minimapButtonCheck
-    y, minimapButtonCheck = AddCheck(framePage, y, L.ShowMinimapButton,
+    y, minimapButtonCheck = AddCheck(quickAccessPage, y, L.ShowMinimapButton,
         function() return db.showMinimapButton end, function(value)
             db.showMinimapButton = value
             UpdateMinimapButton()
         end)
     panel.minimapButtonCheck = minimapButtonCheck
-    framePage.contentHeight = y + 30
+    quickAccessPage.contentHeight = y + 30
+
+    local unitFramesPage = pages.unitFrames
+    local refreshFrameProperties = {}
+
+    local function BuildFrameSettings()
+        local modes = { { "auto", L.UnitFrameColorAuto }, { "health", L.UnitFrameColorHealth },
+            { "reaction", L.UnitFrameColorReaction }, { "fixed", L.UnitFrameColorFixed } }
+        local dropdown = CreateFrame("Frame", nil, unitFramesPage, "UIDropDownMenuTemplate")
+        dropdown:Hide()
+
+        local function CloseFrameDropdown()
+            if UIDROPDOWNMENU_OPEN_MENU == dropdown then CloseDropDownMenus() end
+        end
+
+        local function Caption(parent, label, x, top)
+            local text = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            text:SetPoint("TOPLEFT", x, -top)
+            text:SetText(label)
+            return text
+        end
+
+        local function ApplySetting(label)
+            panel.unitFramePendingAction = label
+            ApplyNativeUnitFrameOptions(nil, true)
+        end
+
+        local function Menu(button, items, getValue, setValue)
+            local arrow = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            arrow:SetPoint("RIGHT", -8, 0)
+            arrow:SetText("v")
+            arrow:SetTextColor(unpack(colors.muted))
+            button.label:SetPoint("BOTTOMRIGHT", -21, 0)
+            local function Refresh()
+                local value = getValue()
+                for _, item in ipairs(items) do
+                    if item[1] == value then button.label:SetText(item[2]); return end
+                end
+            end
+            button:SetScript("OnClick", function(self)
+                UIDropDownMenu_Initialize(dropdown, function()
+                    for _, item in ipairs(items) do
+                        local key, label = unpack(item)
+                        CreateMenuItem(label, getValue() == key, function()
+                            setValue(key)
+                            Refresh()
+                        end)
+                    end
+                end)
+                ToggleDropDownMenu(1, nil, dropdown, self, 0, 0)
+            end)
+            table.insert(refreshFrameProperties, Refresh)
+        end
+
+        local function BuildHealthColor(section, unit, y)
+            local function Get(property) return unitFrames.GetOption(db, unit, property) end
+            local function Set(property, value)
+                unitFrames.SetOption(db, unit, property, value)
+                ApplySetting(L.UnitFrameHealthColor)
+            end
+            Caption(section, L.UnitFrameHealthColor, 12, y)
+            y = y + 32
+            local mode = AddButton(section, "", nil, true)
+            mode:SetSize(144, 28)
+            mode:SetPoint("TOPLEFT", 12, -y + 14)
+            local fixed = AddButton(section, L.UnitFramePickColor, "quiet")
+            fixed:SetSize(99, 28)
+            fixed:SetPoint("LEFT", mode, "RIGHT", 8, 0)
+            local chip = fixed:CreateTexture(nil, "ARTWORK")
+            chip:SetSize(12, 12)
+            chip:SetPoint("LEFT", 7, 0)
+            fixed.label:ClearAllPoints()
+            fixed.label:SetPoint("LEFT", chip, "RIGHT", 4, 0)
+
+            local function RefreshSwatch()
+                fixed:SetShown(Get("colorMode") == "fixed")
+                chip:SetColorTexture(unitFrames.FixedColor(db, unit))
+            end
+            table.insert(refreshFrameProperties, RefreshSwatch)
+            Menu(mode, modes, function() return Get("colorMode") end, function(value)
+                Set("colorMode", value)
+                RefreshSwatch()
+            end)
+            fixed:SetScript("OnClick", function()
+                local r, g, b = unitFrames.FixedColor(db, unit)
+                local previous = Get("fixedColor")
+                local opening = true
+                ColorPickerFrame:SetupColorPickerAndShow({ r = r, g = g, b = b, hasOpacity = false,
+                    swatchFunc = function()
+                        if opening then return end
+                        local nr, ng, nb = ColorPickerFrame:GetColorRGB()
+                        Set("fixedColor", ("%02X%02X%02X"):format(math.floor(nr * 255 + 0.5),
+                            math.floor(ng * 255 + 0.5), math.floor(nb * 255 + 0.5)))
+                        RefreshSwatch()
+                    end,
+                    cancelFunc = function()
+                        Set("fixedColor", previous)
+                        RefreshSwatch()
+                    end,
+                })
+                opening = false
+            end)
+
+            return y + 24
+        end
+
+        local function BuildProperties(section, unit)
+            local y = AddRowLabel(section, 8, L.UnitFrameInformation)
+            local check
+            y, check = AddCheck(section, y, L.UnitFrameShowIdentity, function()
+                return unitFrames.GetOption(db, unit, "identity")
+            end, function(value)
+                unitFrames.SetOption(db, unit, "identity", value)
+                ApplySetting(L.UnitFrameShowIdentity)
+            end)
+            table.insert(refreshFrameProperties, check.Refresh)
+            return y
+        end
+
+        local barSettings = {
+            health = { property = "health" },
+            power = { property = "power" },
+            castBar = { property = "casts", timer = true },
+            swingBar = { property = "swings", timer = true },
+        }
+        local function BuildBarOptions(pane, unit, key, y)
+            local bar = barSettings[key]
+            if not bar then return y end
+
+            local check
+            y, check = AddCheck(pane, y, L.UnitFrameBarVisible, function()
+                return unitFrames.GetOption(db, unit, bar.property)
+            end, function(value)
+                unitFrames.SetOption(db, unit, bar.property, value)
+                ApplySetting(L.UnitFrameBarVisible)
+            end)
+            table.insert(refreshFrameProperties, check.Refresh)
+            if key == "health" then y = BuildHealthColor(pane, unit, y) end
+            if key == "swingBar" then
+                local hint = Caption(pane, L.UnitFrameSwingDetails, 12, y)
+                hint:SetPoint("RIGHT", pane, "RIGHT", -12, 0)
+                hint:SetJustifyH("LEFT")
+                hint:SetTextColor(unpack(colors.muted))
+                y = y + 38
+            end
+
+            Caption(pane, L.UnitFrameTextFormat, 12, y)
+            local selector = AddButton(pane, "", nil, true)
+            selector:SetSize(185, 28)
+            selector:SetPoint("TOPLEFT", 12, -y - 18)
+            Menu(selector, {
+                { "none", L.UnitFrameTextNone },
+                { "percent", bar.timer and L.UnitFrameTextTime or L.UnitFrameShowPercents },
+                { "amount", bar.timer and L.UnitFrameTextName or L.UnitFrameShowAmounts },
+                { "both", L.UnitFrameTextBoth },
+            }, function()
+                return unitFrames.GetTextMode(db, unit, key)
+            end, function(value)
+                unitFrames.SetOption(db, unit, key .. "Text", value)
+                ApplySetting(L.UnitFrameTextFormat)
+            end)
+            return y + 58
+        end
+
+        local function BuildDimensions(section, unit, contentTop)
+            local targets = {}
+            for _, group in ipairs(unitFrames.dimensionGroups) do
+                if group.columns then
+                    for _, row in ipairs(group.rows) do
+                        if not row.playerOnly or unit == "player" then
+                            targets[#targets + 1] = {
+                                key = row.key or "frame", label = row.label or group.title,
+                                fields = row.fields, labels = group.columns,
+                            }
+                        end
+                    end
+                else
+                    local fields, labels = {}, {}
+                    for _, row in ipairs(group.rows) do
+                        fields[#fields + 1] = row.fields[1]
+                        labels[#labels + 1] = row.label
+                    end
+                    targets[#targets + 1] = { key = "text", label = group.title, fields = fields, labels = labels }
+                end
+            end
+
+            local tabs, panes, refreshes = {}, {}, {}
+            local selected = "frame"
+            local reset
+            local function SizeSection()
+                local height = math.max(11 + #targets * 28, panes[selected]:GetHeight() + 6)
+                reset:SetPoint("TOPLEFT", 4, -height - 8)
+                section.contentHeight = contentTop + height + 42
+                if section:IsVisible() then
+                    content:SetHeight(section.contentHeight)
+                    UpdateScrollBar()
+                end
+            end
+            function section.SelectedBar() return selected end
+            local function Select(key)
+                selected = key
+                for id, tab in pairs(tabs) do
+                    SetSelected(tab, id == key)
+                    panes[id]:SetShown(id == key)
+                end
+                for _, refresh in ipairs(refreshes) do refresh() end
+                SizeSection()
+                panel.RefreshUnitFramePreview()
+            end
+            section.SelectBar = Select
+
+            local function Control(pane, field, label, y)
+                local valueLabel = pane:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+                valueLabel:SetPoint("TOPRIGHT", -12, -y)
+                Caption(pane, label, 12, y)
+
+                local slider = CreateFrame("Slider", nil, pane)
+                slider:SetOrientation("HORIZONTAL")
+                slider:SetPoint("TOPLEFT", 45, -y - 19)
+                slider:SetPoint("TOPRIGHT", -45, -y - 19)
+                slider:SetHeight(24)
+                slider:EnableMouse(true)
+                slider:SetMinMaxValues(field.min, field.max)
+                slider:SetValueStep(1)
+                slider:SetObeyStepOnDrag(true)
+                slider:SetThumbTexture("Interface\\Buttons\\WHITE8X8")
+                local thumb = slider:GetThumbTexture()
+                thumb:SetSize(10, 14)
+                thumb:SetVertexColor(unpack(colors.accent))
+                local track = slider:CreateTexture(nil, "BACKGROUND")
+                track:SetPoint("LEFT")
+                track:SetPoint("RIGHT")
+                track:SetHeight(4)
+                track:SetColorTexture(unpack(colors.border))
+                local fill = slider:CreateTexture(nil, "BORDER")
+                fill:SetPoint("LEFT", track, "LEFT")
+                fill:SetPoint("RIGHT", thumb, "CENTER")
+                fill:SetHeight(4)
+                fill:SetColorTexture(unpack(colors.accent))
+
+                local decrease = AddButton(pane, L.UnitFrameDecrease)
+                local increase = AddButton(pane, L.UnitFrameIncrease)
+                decrease:SetSize(25, 24)
+                increase:SetSize(25, 24)
+                decrease:SetPoint("RIGHT", slider, "LEFT", -7, 0)
+                increase:SetPoint("LEFT", slider, "RIGHT", 7, 0)
+
+                local function Maximum()
+                    if field.auto then return math.min(field.max, unitFrames.GetOption(db, unit, "width") - 2) end
+                    return field.max
+                end
+                local refreshing, manual, autoCheck
+                local function Refresh(reset)
+                    if reset then manual = nil end
+                    refreshing = true
+                    local stored = unitFrames.GetOption(db, unit, field.key)
+                    local limit = Maximum()
+                    local auto = field.auto == true and stored == 0
+                    local value = auto and limit or math.min(stored, limit)
+                    slider:SetMinMaxValues(field.min, limit)
+                    slider:SetValue(value)
+                    slider:EnableMouse(not auto)
+                    slider:SetAlpha(auto and 0.45 or 1)
+                    decrease:SetEnabled(not auto and value > field.min)
+                    increase:SetEnabled(not auto and value < limit)
+                    decrease:SetAlpha(not auto and value > field.min and 1 or 0.45)
+                    increase:SetAlpha(not auto and value < limit and 1 or 0.45)
+                    valueLabel:SetText(auto and L.UnitFrameAutoValue:format(value) or tostring(value))
+                    if autoCheck then autoCheck.Refresh() end
+                    refreshing = false
+                end
+                local function Change(value)
+                    if not refreshing and value ~= unitFrames.GetOption(db, unit, field.key) then
+                        unitFrames.SetOption(db, unit, field.key, value)
+                        -- Updating the frame width also changes the limits of its individual bars.
+                        if field.key == "width" then
+                            for _, refresh in ipairs(refreshes) do refresh() end
+                        else
+                            Refresh()
+                        end
+                        ApplySetting(label)
+                    end
+                end
+
+                slider:SetScript("OnValueChanged", function(_, value) Change(math.floor(value + 0.5)) end)
+                local function Nudge(step)
+                    local stored = unitFrames.GetOption(db, unit, field.key)
+                    if field.auto and stored == 0 then return end
+                    local value = math.min(stored, Maximum())
+                    Change(math.max(field.min, math.min(Maximum(), value + step)))
+                end
+                decrease:SetScript("OnClick", function() Nudge(-1) end)
+                increase:SetScript("OnClick", function() Nudge(1) end)
+                if field.auto then
+                    local tail
+                    tail, autoCheck = AddCheck(pane, y + 54, L.UnitFrameAutoWidth, function()
+                        return unitFrames.GetOption(db, unit, field.key) == 0
+                    end, function(auto)
+                        if auto then
+                            manual = unitFrames.GetOption(db, unit, field.key)
+                            Change(0)
+                        else
+                            Change(math.min(manual or Maximum(), Maximum()))
+                        end
+                    end)
+                    y = tail - 8
+                else
+                    y = y + 62
+                end
+                refreshes[#refreshes + 1] = Refresh
+                table.insert(refreshFrameProperties, Refresh)
+                return y
+            end
+
+            for index, target in ipairs(targets) do
+                local key = target.key
+                local tab = AddSelectionRow(section, target.label)
+                tab:SetSize(136, 26)
+                tab.activeMark:SetHeight(20)
+                tab:SetPoint("TOPLEFT", 4, -8 - (index - 1) * 28)
+                tab:SetScript("OnClick", function() Select(key) end)
+                tabs[key] = tab
+
+                local pane = CreateFrame("Frame", nil, section)
+                pane:SetPoint("TOPLEFT", 150, -6)
+                pane:SetPoint("TOPRIGHT", -6, -6)
+                ColorTexture(pane, "BACKGROUND", colors.card)
+                panes[key] = pane
+                local y = BuildBarOptions(pane, unit, key, 12)
+                for fieldIndex, field in ipairs(target.fields) do
+                    y = Control(pane, field, target.labels[fieldIndex], y)
+                end
+                if key == "frame" then
+                    local hint = Caption(pane, L.UnitFrameDimensionsHelp, 12, y)
+                    hint:SetPoint("RIGHT", pane, "RIGHT", -12, 0)
+                    hint:SetJustifyH("LEFT")
+                    hint:SetTextColor(unpack(colors.muted))
+                    y = y + 31
+                end
+                pane:SetHeight(y)
+                pane:SetShown(key == selected)
+                SetSelected(tab, key == selected)
+            end
+
+            reset = AddButton(section, L.UnitFrameResetDimensions, "quiet")
+            reset:SetSize(174, 26)
+            reset:SetScript("OnClick", function()
+                unitFrames.ResetDimensions(db, unit)
+                for _, refresh in ipairs(refreshes) do refresh(true) end
+                ApplySetting(L.UnitFrameResetDimensions)
+            end)
+            SizeSection()
+        end
+
+        AddHeading(unitFramesPage, 8, L.NativeUnitFrames, L.NativeUnitFramesHelp)
+        local unitTabs, sectionTabs, unitViews = {}, {}, {}
+        local RefreshSection
+        local selectedUnit = db.showMinimalTargetFrame and not db.showMinimalPlayerFrame and "target" or "player"
+        local selectedSection = "properties"
+        local unitKeys = { player = "showMinimalPlayerFrame", target = "showMinimalTargetFrame" }
+        local sectionTop, blizzardTop = 270, 119
+        local samples = { player = { kind = "idle", percent = 50 }, target = { kind = "npc", percent = 50 } }
+
+        local function NewSection(top)
+            local section = CreateFrame("Frame", nil, unitFramesPage)
+            section:SetPoint("TOPLEFT", 0, -top)
+            section:SetPoint("RIGHT")
+            section:SetHeight(1)
+            return section
+        end
+
+        local pending = Caption(unitFramesPage, L.AfterCombat, 6, 92)
+        pending:SetTextColor(unpack(colors.accent))
+        pending:SetShown(unitFrameAppearancePending == true)
+        panel.unitFramesStatus = pending
+
+        local unitHeader = NewSection(blizzardTop)
+        local _, compactCheck = AddCheck(unitHeader, 0, L.UseCompactFrame, function()
+            return db[unitKeys[selectedUnit]]
+        end, function(value)
+            db[unitKeys[selectedUnit]] = value
+            panel.unitFramePendingAction = L.UseCompactFrame
+            ApplyNativeUnitFrameOptions()
+        end)
+        table.insert(refreshFrameProperties, compactCheck.Refresh)
+
+        local previewCard = CreateFrame("Frame", nil, unitHeader)
+        previewCard:SetPoint("TOPLEFT", 4, -29)
+        previewCard:SetPoint("RIGHT", -6, 0)
+        previewCard:SetHeight(83)
+        ColorTexture(previewCard, "BACKGROUND", colors.card)
+        local previewLabel = Caption(previewCard, L.UnitFramePreview, 10, 7)
+        previewLabel:SetTextColor(unpack(colors.muted))
+        local preview = CreateFrame("Frame", nil, previewCard)
+        preview:SetPoint("CENTER", previewCard, "CENTER", 0, -7)
+        local previewOutline = CreateFrame("Frame", nil, preview, "BackdropTemplate")
+        previewOutline:SetFrameLevel(preview:GetFrameLevel() + 8)
+        previewOutline:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        previewOutline:SetBackdropBorderColor(unpack(colors.accent))
+        previewOutline:Hide()
+        local place = AddButton(previewCard, L.UnitFramePlace, "quiet")
+        place:SetSize(118, 23)
+        place:SetPoint("TOPRIGHT", -5, -2)
+        place:SetScript("OnClick", function() editHud:GetScript("OnClick")(editHud) end)
+
+        local sampleMenus = {}
+        for _, unitID in ipairs(unitFrames.units) do
+            local unit = unitID
+            local menu = AddButton(unitHeader, "", nil, true)
+            menu:SetSize(148, 24)
+            menu:SetPoint("TOPLEFT", 4, -119)
+            local options = unit == "player" and {
+                { "idle", L.UnitFrameSampleIdle }, { "cast", L.UnitFrameSampleCast },
+            } or {
+                { "npc", L.UnitFrameSampleHostile }, { "mage", L.UnitFrameSampleMageOption }, { "cast", L.UnitFrameSampleCast },
+            }
+            Menu(menu, options, function() return samples[unit].kind end, function(kind)
+                samples[unit].kind = kind
+                panel.RefreshUnitFramePreview()
+            end)
+            sampleMenus[unit] = menu
+        end
+        local sampleHealth = CreateFrame("Slider", nil, unitHeader, "OptionsSliderTemplate")
+        sampleHealth:SetWidth(105)
+        sampleHealth:SetPoint("TOPRIGHT", -9, -122)
+        sampleHealth:SetMinMaxValues(0, 100)
+        sampleHealth:SetValueStep(1)
+        sampleHealth:SetObeyStepOnDrag(true)
+        local sampleHealthLabel = unitHeader:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        sampleHealthLabel:SetPoint("RIGHT", sampleHealth, "LEFT", -8, 0)
+        local refreshingSample
+        sampleHealth:SetScript("OnValueChanged", function(_, value)
+            if refreshingSample or not samples[selectedUnit] then return end
+            samples[selectedUnit].percent = math.floor(value + 0.5)
+            panel.RefreshUnitFramePreview()
+        end)
+
+        local sampleButtons = {}
+        for key in pairs(barSettings) do
+            local bar = key
+            local button = CreateFrame("Button", nil, preview)
+            button:SetFrameLevel(preview:GetFrameLevel() + 9)
+            AddHoverBorder(button)
+            button:SetScript("OnClick", function()
+                if selectedUnit == "blizzard" then return end
+                CloseFrameDropdown()
+                selectedSection = "dimensions"
+                unitViews[selectedUnit].dimensions.SelectBar(bar)
+                RefreshSection(false)
+            end)
+            sampleButtons[bar] = button
+        end
+
+        function panel.RefreshUnitFrameStates()
+            local editing = EditModeManagerFrame and EditModeManagerFrame:IsShown()
+            for _, unit in ipairs(unitFrames.units) do
+                local tab = unitTabs[unit]
+                if tab and tab.status then
+                    local hidden = unit == "player" and db.hideNativePlayerFrame == true
+                        or unit == "target" and db.hideNativeTargetFrame == true
+                    local status = L.UnitFrameStatusBlizzard
+                    if not editing then
+                        if unitFrames.IsActive(unit) then status = L.UnitFrameStatusCompact
+                        elseif hidden then status = L.UnitFrameStatusHidden end
+                    end
+                    tab.status:SetText(status)
+                end
+            end
+        end
+
+        function panel.RefreshUnitFramePreview()
+            if not unitViews[selectedUnit] or not unitFramesPage:IsVisible() then return end
+            local resizing = selectedSection == "dimensions"
+            local selected = resizing and unitViews[selectedUnit].dimensions.SelectedBar()
+            local sample = samples[selectedUnit]
+            local sampleOnly = unitFrames.BuildPreview(preview, selectedUnit, db, selected, sample)
+            for unit, menu in pairs(sampleMenus) do menu:SetShown(unit == selectedUnit) end
+            local showHealth = preview.health:IsShown() and unitFrames.GetOption(db, selectedUnit, "colorMode") == "health"
+            sampleHealth:SetShown(showHealth)
+            sampleHealthLabel:SetShown(showHealth)
+            if showHealth then
+                refreshingSample = true
+                sampleHealth:SetValue(sample.percent)
+                sampleHealthLabel:SetText(L.UnitFrameSampleHealth:format(sample.percent))
+                refreshingSample = false
+            end
+            for key, button in pairs(sampleButtons) do
+                local region = preview[key]
+                button:ClearAllPoints()
+                button:SetAllPoints(region)
+                button:SetShown(region:IsShown())
+            end
+            local availableWidth = math.max(64, unitFramesPage:GetWidth() - 30)
+            local width, height = preview:GetWidth(), preview:GetHeight()
+            preview:SetScale(math.min(1, availableWidth / width, 57 / height))
+            local bar = selected and selected ~= "frame" and selected ~= "text" and preview[selected]
+            previewOutline:SetShown(bar and bar:IsShown() or false)
+            if previewOutline:IsShown() then
+                previewOutline:ClearAllPoints()
+                previewOutline:SetAllPoints(bar)
+            end
+            if resizing then
+                local measured = bar or preview
+                local format = sampleOnly and L.UnitFramePreviewHidden or L.UnitFramePreviewDimensions
+                previewLabel:SetText(format:format(math.floor(measured:GetWidth() + 0.5),
+                    math.floor(measured:GetHeight() + 0.5)))
+            else
+                previewLabel:SetText(L.UnitFramePreview)
+            end
+            place:SetEnabled(unitFrames.IsActive(selectedUnit))
+            place:SetAlpha(unitFrames.IsActive(selectedUnit) and 1 or 0.42)
+        end
+        unitFramesPage:HookScript("OnSizeChanged", panel.RefreshUnitFramePreview)
+
+        for _, unit in ipairs(unitFrames.units) do
+            local properties = NewSection(sectionTop + 34)
+            local dimensions = NewSection(sectionTop + 34)
+            properties.contentHeight = sectionTop + 42 + BuildProperties(properties, unit)
+            BuildDimensions(dimensions, unit, sectionTop + 42)
+            unitViews[unit] = { properties = properties, dimensions = dimensions }
+        end
+
+        local blizzard = NewSection(blizzardTop)
+        local y = AddHeading(blizzard, 0, L.BlizzardUnitFrames, L.BlizzardUnitFramesHelp)
+        for _, entry in ipairs({ { L.HideNativePlayerFrame, "hideNativePlayerFrame" },
+            { L.HideNativeTargetFrame, "hideNativeTargetFrame" } }) do
+            local label, key = unpack(entry)
+            local check
+            y, check = AddCheck(blizzard, y, label, function() return db[key] end, function(value)
+                db[key] = value
+                ApplyNativeUnitFrameOptions()
+            end)
+            table.insert(refreshFrameProperties, check.Refresh)
+        end
+        blizzard.contentHeight = blizzardTop + y + 16
+
+        RefreshSection = function(resetScroll)
+            local showCompact = selectedUnit ~= "blizzard"
+            for id, button in pairs(unitTabs) do SetSelected(button, id == selectedUnit) end
+            for id, button in pairs(sectionTabs) do
+                button:SetShown(showCompact)
+                SetSelected(button, id == selectedSection)
+            end
+            for id, sections in pairs(unitViews) do
+                for key, section in pairs(sections) do
+                    section:SetShown(id == selectedUnit and key == selectedSection)
+                end
+            end
+            unitHeader:SetShown(showCompact)
+            blizzard:SetShown(not showCompact)
+            local current = showCompact and unitViews[selectedUnit][selectedSection] or blizzard
+            unitFramesPage.contentHeight = current.contentHeight
+            content:SetHeight(current.contentHeight)
+            compactCheck.Refresh()
+            panel.RefreshUnitFrameStates()
+            panel.RefreshUnitFramePreview()
+            if resetScroll then scroll:SetVerticalScroll(0) end
+            UpdateScrollBar()
+        end
+
+        local function AddFrameTab(tabs, id, label, size, x, top, selectTab)
+            local tab = AddSelectionRow(unitFramesPage, label)
+            local unit = id == "player" or id == "target"
+            tab:SetSize(size, unit and 37 or 30)
+            tab:SetPoint("TOPLEFT", x, -top)
+            if unit then
+                tab.label:ClearAllPoints()
+                tab.label:SetPoint("TOPLEFT", 10, -2)
+                tab.label:SetPoint("BOTTOMRIGHT", -8, 15)
+                tab.status = tab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                tab.status:SetPoint("BOTTOMLEFT", 10, 3)
+                tab.status:SetTextColor(unpack(colors.muted))
+            end
+            tab:SetScript("OnClick", function()
+                CloseFrameDropdown()
+                selectTab(id)
+                RefreshSection(true)
+            end)
+            tabs[id] = tab
+        end
+
+        local function SelectUnit(id) selectedUnit = id end
+        local function SelectSection(id) selectedSection = id end
+        AddFrameTab(unitTabs, "player", L.UnitFramePlayer, 94, 4, 51, SelectUnit)
+        AddFrameTab(unitTabs, "target", L.UnitFrameTarget, 94, 102, 51, SelectUnit)
+        AddFrameTab(unitTabs, "blizzard", L.UnitFrameBlizzardTab, 94, 200, 51, SelectUnit)
+        AddFrameTab(sectionTabs, "properties", L.UnitFrameOptions, 108, 4, sectionTop, SelectSection)
+        AddFrameTab(sectionTabs, "dimensions", L.UnitFrameDimensions, 108, 116, sectionTop, SelectSection)
+        unitFramesPage:HookScript("OnShow", function() RefreshSection(false) end)
+        unitFramesPage:HookScript("OnHide", CloseFrameDropdown)
+    end
+
+    BuildFrameSettings()
 
     local questPage = pages.quests
     y = AddHeading(questPage, 8, L.Quests,
@@ -2075,11 +2066,10 @@ CreateOptions = function()
         InitializeGroups()
         SetGroupUndo()
         selectedGroupID = nil
-        ApplyPlayerPortrait()
-        ApplyTargetVisibility()
-        UpdateLevelBadgePositions()
+
         PositionMinimapButton()
         UpdateMinimapButton()
+        ApplyNativeUnitFrameOptions()
         ApplyQuestTrackerVisibility()
         if performance then
             performance:SetScale(db.performanceScale)
@@ -2093,11 +2083,10 @@ CreateOptions = function()
 
     RefreshAll = function()
         enabled:SetChecked(db.enabled)
-        hidePlayerCheck.Refresh()
+        for _, refresh in ipairs(refreshFrameProperties) do refresh() end
+        panel.RefreshUnitFramePreview()
         hideQuestTrackerCheck.Refresh()
-        hideTargetCheck.Refresh()
         minimapButtonCheck.Refresh()
-        portraitSizeSlider:SetValue(db.playerPortraitSize or 48)
         for _, check in pairs(performanceChecks) do check.Refresh() end
         scaleSlider:SetValue(db.performanceScale)
         RefreshProfileControls()
@@ -2115,10 +2104,6 @@ controller:RegisterEvent("PLAYER_LOGIN")
 controller:RegisterEvent("PLAYER_ENTERING_WORLD")
 controller:RegisterEvent("PLAYER_REGEN_DISABLED")
 controller:RegisterEvent("PLAYER_REGEN_ENABLED")
-controller:RegisterEvent("PLAYER_TARGET_CHANGED")
-controller:RegisterEvent("UNIT_PORTRAIT_UPDATE")
-controller:RegisterEvent("UNIT_LEVEL")
-controller:RegisterEvent("PLAYER_LEVEL_UP")
 controller:SetScript("OnEvent", function(_, event, loaded)
     if event == "ADDON_LOADED" and loaded == addonName then
         if type(HUDTunerCharacterProfiles) ~= "table" then HUDTunerCharacterProfiles = {} end
@@ -2128,15 +2113,12 @@ controller:SetScript("OnEvent", function(_, event, loaded)
             db.hideBlizzardQuestTracker = false
         end
         if db.enabled == nil then db.enabled = true end
-        if type(db.hideTargetFrame) ~= "boolean" then db.hideTargetFrame = false end
         if type(db.showMinimapButton) ~= "boolean" then db.showMinimapButton = true end
         if type(db.minimapButtonAngle) ~= "number" or db.minimapButtonAngle ~= db.minimapButtonAngle
             or math.abs(db.minimapButtonAngle) == math.huge then
             db.minimapButtonAngle = 225
         end
-        if type(db.hidePlayerFrame) ~= "boolean" then db.hidePlayerFrame = false end
-        if type(db.playerPortraitSize) ~= "number" or db.playerPortraitSize < 24
-            or db.playerPortraitSize > 120 then db.playerPortraitSize = 48 end
+
         if type(db.showPerformance) ~= "boolean" then db.showPerformance = true end
         for _, key in ipairs(performanceMetrics) do
             if type(db[key]) ~= "boolean" then db[key] = true end
@@ -2167,33 +2149,14 @@ controller:SetScript("OnEvent", function(_, event, loaded)
             profileKey = realm and realm ~= "" and character .. "-" .. realm or character
         end
         CreatePerformance()
-        ApplyPlayerPortrait()
-        ApplyTargetVisibility()
     end
-    if event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_REGEN_ENABLED" then
-        ApplyPlayerPortrait()
+    if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_REGEN_ENABLED" then
+        ApplyNativeUnitFrameOptions()
     end
     if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD"
         or event == "PLAYER_REGEN_ENABLED"
         or (event == "ADDON_LOADED" and loaded == "Blizzard_ObjectiveTracker") then
         ApplyQuestTrackerVisibility()
-    end
-    if event == "UNIT_PORTRAIT_UPDATE" then
-        if loaded == "player" then ApplyPlayerPortrait() end
-        if loaded == "target" and targetPortrait then
-            SetClassIcon(targetPortrait.texture, "target")
-        end
-    end
-    if event == "UNIT_LEVEL" then
-        if loaded == "player" and playerPortrait then UpdatePortraitLevel(playerPortrait, "player") end
-        if loaded == "target" and targetPortrait then UpdatePortraitLevel(targetPortrait, "target") end
-    elseif event == "PLAYER_LEVEL_UP" then
-        if playerPortrait then UpdatePortraitLevel(playerPortrait, "player") end
-        if targetPortrait then UpdatePortraitLevel(targetPortrait, "target") end
-    end
-    if event == "PLAYER_TARGET_CHANGED" and targetPortrait and db.hideTargetFrame then
-        SetClassIcon(targetPortrait.texture, "target")
-        UpdatePortraitLevel(targetPortrait, "target")
     end
     DiscoverBars()
     if event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
@@ -2231,19 +2194,13 @@ controller:SetScript("OnEvent", function(_, event, loaded)
             end
         end
     end
-    if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD"
-        or event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_TARGET_CHANGED" then
-        ApplyTargetVisibility()
-    end
+
 end)
 controller:SetScript("OnUpdate", function(_, elapsed)
     if not db then return end
     local now = GetTime()
     local editing = EditModeManagerFrame and EditModeManagerFrame:IsShown()
-    if editing ~= wasEditing then
-        wasEditing = editing
-        ApplyTargetVisibility()
-    end
+
     local binding = QuickKeybindFrame and QuickKeybindFrame:IsShown()
     local spellbook = (PlayerSpellsFrame and PlayerSpellsFrame:IsShown())
         or (SpellBookFrame and SpellBookFrame:IsShown())
@@ -2292,21 +2249,7 @@ SlashCmdList.FOREVERHOVERBARS = function(message)
         return
     end
     message = (message or ""):lower():match("^%s*(.-)%s*$")
-    if message == "level" then
-        ToggleLevelMover()
-    elseif message == "level reset" then
-        db.levelOffsetX, db.levelOffsetY = nil, nil
-        UpdateLevelBadgePositions()
-        Notify(L.LevelPositionReset)
-    elseif message == "player" then
-        TogglePlayerMover()
-    elseif message == "target" then
-        Notify(L.MoveTargetInEditMode)
-    elseif message == "target reset" then
-        Notify(L.TargetPositionEditMode)
-    elseif message == "tooltip" then
-        Notify(L.NativeTooltips)
-    elseif message == "tooltip reset" then
+    if message == "tooltip" or message == "tooltip reset" then
         Notify(L.NativeTooltips)
     elseif message == "rendimiento" or message == "performance" then
         TogglePerformanceMover()
