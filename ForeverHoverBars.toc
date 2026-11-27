@@ -3,7 +3,7 @@
 ## Notes: Action bar visibility, unit frames, FPS/latency, and objective tracker controls. /foreverhud
 ## Notes-esES: Visibilidad de barras, marcos, FPS/latencia y control del rastreador. /foreverhud
 ## Notes-esMX: Visibilidad de barras, marcos, FPS/latencia y control del rastreador. /foreverhud
-## Version: 3.1
+## Version: 3.1.1
 ## SavedVariables: HUDTunerCharacterProfiles
 ## SavedVariablesPerCharacter: ForeverHoverBarsDB
 

@@ -890,10 +890,7 @@ CreateOptions = function()
     local pageOrder = {
         { id = "bars", label = L.BarsAndGroups },
         { id = "unitFrames", label = L.NativeUnitFrames },
-        { id = "quickAccess", label = L.QuickAccess },
-        { id = "quests", label = L.Quests },
-        { id = "profiles", label = L.Profiles },
-        { id = "performance", label = L.Performance },
+        { id = "settings", label = L.Settings },
     }
     local pages, navButtons = {}, {}
     for index, item in ipairs(pageOrder) do
@@ -984,16 +981,60 @@ CreateOptions = function()
         L.GroupsHelp)
 
     local y
-    local quickAccessPage = pages.quickAccess
-    y = AddHeading(quickAccessPage, 8, L.QuickAccess, L.QuickAccessHelp)
+    local settingsPanes = {}
+    do
+        local page = pages.settings
+        local tabTop = AddHeading(page, 8, L.Settings) - 16
+        local paneTop = tabTop + 40
+        local tabWidth = math.min(108, math.floor((initialContentWidth - 16) / 3))
+        local tabs = {}
+        local active = "general"
+        local sections = {
+            { id = "general", label = L.GeneralSettings },
+            { id = "performance", label = L.Performance },
+            { id = "profiles", label = L.Profiles },
+        }
+
+        local function SelectSettingsPane(id)
+            active = id
+            for key, pane in pairs(settingsPanes) do
+                pane:SetShown(key == id)
+                SetSelected(tabs[key], key == id)
+            end
+            page.contentHeight = paneTop + settingsPanes[id].contentHeight
+            content:SetHeight(page.contentHeight)
+            scroll:SetVerticalScroll(0)
+            UpdateScrollBar()
+        end
+
+        for index, section in ipairs(sections) do
+            local id = section.id
+            local tab = AddSelectionRow(page, section.label)
+            tab:SetSize(tabWidth, 30)
+            tab:SetPoint("TOPLEFT", 4 + (index - 1) * (tabWidth + 4), -tabTop)
+            tab:SetScript("OnClick", function() SelectSettingsPane(id) end)
+            tabs[id] = tab
+
+            local pane = CreateFrame("Frame", nil, page)
+            pane:SetPoint("TOPLEFT", 0, -paneTop)
+            pane:SetPoint("RIGHT")
+            pane:SetHeight(1)
+            pane:Hide()
+            settingsPanes[id] = pane
+        end
+        page:SetScript("OnShow", function() SelectSettingsPane(active) end)
+    end
+
+    local generalPage = settingsPanes.general
+    y = AddHeading(generalPage, 8, L.QuickAccess, L.QuickAccessHelp)
     local minimapButtonCheck
-    y, minimapButtonCheck = AddCheck(quickAccessPage, y, L.ShowMinimapButton,
+    y, minimapButtonCheck = AddCheck(generalPage, y, L.ShowMinimapButton,
         function() return db.showMinimapButton end, function(value)
             db.showMinimapButton = value
             UpdateMinimapButton()
         end)
     panel.minimapButtonCheck = minimapButtonCheck
-    quickAccessPage.contentHeight = y + 30
+    local questTop = y + 12
 
     local unitFramesPage = pages.unitFrames
     local refreshFrameProperties = {}
@@ -1587,24 +1628,23 @@ CreateOptions = function()
 
     BuildFrameSettings()
 
-    local questPage = pages.quests
-    y = AddHeading(questPage, 8, L.Quests,
+    y = AddHeading(generalPage, questTop, L.Quests,
         L.QuestsHelp)
     local hideQuestTrackerCheck
-    y, hideQuestTrackerCheck = AddCheck(questPage, y, L.HideQuestTracker,
+    y, hideQuestTrackerCheck = AddCheck(generalPage, y, L.HideQuestTracker,
         function() return db.hideBlizzardQuestTracker end, function(value)
             db.hideBlizzardQuestTracker = value
             ApplyQuestTrackerVisibility()
         end)
-    local questTrackerStatus = questPage:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local questTrackerStatus = generalPage:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     questTrackerStatus:SetPoint("TOPLEFT", 28, -y)
     questTrackerStatus:SetText(L.AfterCombat)
     questTrackerStatus:SetTextColor(unpack(colors.accent))
     questTrackerStatus:SetShown(questTrackerPending and true or false)
     panel.questTrackerStatus = questTrackerStatus
-    questPage.contentHeight = y + 30
+    generalPage.contentHeight = y + 30
 
-    local performancePage = pages.performance
+    local performancePage = settingsPanes.performance
     y = AddHeading(performancePage, 8, L.Performance,
         L.PerformanceHelp)
     local performanceChecks = {}
@@ -1994,7 +2034,7 @@ CreateOptions = function()
         selectedGroupID = CreateGroup()
         RefreshGroupUI()
     end)
-    local profilePage = pages.profiles
+    local profilePage = settingsPanes.profiles
     y = AddHeading(profilePage, 8, L.Profiles, L.ProfilesHelp)
     local sourceCharacter
     local profileMenu = CreateFrame("Frame", nil, profilePage, "UIDropDownMenuTemplate")

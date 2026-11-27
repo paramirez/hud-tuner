@@ -7,8 +7,8 @@ HUD Tuner lets you decide what stays on screen in World of Warcraft: Forever.
 - Preview each bar in **Unit frames**, then click it to edit. Try different target and casting examples before placing a frame in the HUD.
 - Show FPS and home or world latency in a movable display.
 - Open **Edit HUD** to place the unit frames and performance display with to-scale previews and alignment guides.
-- Copy settings from another character under **Profiles**. Log in and out on the source character first.
-- Hide or restore Blizzard's objective tracker from the **Quests** tab.
+- Under **Settings → General**, toggle the minimap button or Blizzard's objective tracker.
+- Under **Settings → Profiles**, copy settings from another character. Log in and out on the source character first.
 
 ## Compatibility and installation
 
